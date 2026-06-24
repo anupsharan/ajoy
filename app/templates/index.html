@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en" x-data="ajoy()" x-init="init()">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A-Joy · Portfolio</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="/static/js/alpine.min.js" defer></script>
+  <link rel="stylesheet" href="/static/css/style.css?v=4" />
+  <style>
+    /* Tailwind-free utility sprinkles used inline */
+    .flex        { display: flex; }
+    .flex-wrap   { flex-wrap: wrap; }
+    .items-center{ align-items: center; }
+    .items-start { align-items: flex-start; }
+    .items-end   { align-items: flex-end; }
+    .justify-between { justify-content: space-between; }
+    .justify-end { justify-content: flex-end; }
+    .gap-2 { gap: 0.5rem; }
+    .gap-3 { gap: 0.75rem; }
+    .gap-4 { gap: 1rem; }
+    .grid { display: grid; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .w-full { width: 100%; }
+    .shrink-0 { flex-shrink: 0; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .space-y-3 > * + * { margin-top: 0.75rem; }
+    .mt-1 { margin-top: 0.25rem; }
+    .mt-2 { margin-top: 0.5rem; }
+    .mb-1 { margin-bottom: 0.25rem; }
+    .mb-2 { margin-bottom: 0.5rem; }
+    .mb-4 { margin-bottom: 1rem; }
+    .mb-5 { margin-bottom: 1.25rem; }
+    .p-4 { padding: 1rem; }
+    .px-6 { padding-left:1.5rem; padding-right:1.5rem; }
+    .py-3 { padding-top:0.75rem; padding-bottom:0.75rem; }
+    .overflow-hidden { overflow: hidden; }
+    .max-w-2xl { max-width: 42rem; }
+    .leading-relaxed { line-height: 1.625; }
+    .font-semibold { font-weight: 600; }
+    .font-bold { font-weight: 700; }
+    .text-xs { font-size: 0.75rem; }
+    .text-sm { font-size: 0.875rem; }
+    .text-base { font-size: 1rem; }
+    .text-2xl { font-size: 1.5rem; }
+    .text-white  { color: #1C1035; }
+    .text-orange { color: #EA580C; }
+    .text-purple { color: #7C3AED; }
+    .text-muted  { color: #7C6FAA; }
+    .text-emerald{ color: #15803D; }
+    .text-red    { color: #BE123C; }
+    .text-yellow { color: #B45309; }
+    .bg-surface  { background: #F5F3FA; }
+    .rounded     { border-radius: 0.375rem; }
+    .border-purple { border: 1px solid #3D2A6A; }
+    .rows-2      { resize: vertical; min-height: 3.5rem; }
+    code.slug    { background: #F0EDF8; color: #6B21A8; padding: 0.1rem 0.4rem;
+                   border-radius: 0.25rem; font-size: 0.72rem; font-family: monospace; }
+  </style>
+</head>
+<body style="min-height:100vh;">
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header class="site-header">
+  <div class="logo-wrap">
+    <img src="/static/img/logo.svg" alt="A-Joy" class="logo-img" />
+    <div>
+      <div class="logo-tagline">Financial Joy</div>
+    </div>
+  </div>
+  <span class="header-clock" x-text="clock"></span>
+</header>
+
+<!-- ── Tab nav ─────────────────────────────────────────────────────────── -->
+<nav class="tab-nav">
+  <template x-for="tab in tabs" :key="tab.id">
+    <button
+      @click="activeTab = tab.id"
+      :class="activeTab === tab.id ? 'tab-btn active' : 'tab-btn'"
+      x-text="tab.label">
+    </button>
+  </template>
+</nav>
+
+<!-- ── Main ────────────────────────────────────────────────────────────── -->
+<main style="padding:1.5rem; max-width:1280px; margin:0 auto;">
+
+  <!-- ════════════════════════════════════ SYMBOLS ═══════════════════════ -->
+  <section x-show="activeTab === 'symbols'" x-cloak>
+    <div class="flex items-center justify-between mb-4">
+      <span class="font-semibold" style="color:#1C1035;">Symbols</span>
+      <form @submit.prevent="addSymbol()" class="flex gap-2">
+        <input x-model="newTicker" placeholder="TICKER"
+               style="width:7rem; text-transform:uppercase;" maxlength="8" />
+        <button type="submit" class="btn-primary">Add</button>
+      </form>
+    </div>
+
+    <div x-show="symbols.length === 0" class="empty-state">No symbols yet — add one above.</div>
+
+    <div class="card overflow-hidden">
+      <table x-show="symbols.length > 0" class="data-table">
+        <thead>
+          <tr><th>Ticker</th><th>Status</th><th>Added</th><th></th></tr>
+        </thead>
+        <tbody>
+          <template x-for="s in symbols" :key="s.id">
+            <tr>
+              <td class="font-bold text-white" x-text="s.ticker"></td>
+              <td>
+                <button @click="toggleSymbol(s)"
+                  :class="s.active ? 'badge-green' : 'badge-gray'"
+                  x-text="s.active ? 'Active' : 'Inactive'"></button>
+              </td>
+              <td class="text-muted text-xs" x-text="fmtDate(s.created_at)"></td>
+              <td class="text-right">
+                <button @click="deleteSymbol(s.id)" class="action-btn-danger">Remove</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════ EMA CROSS (S2) ═══════════════ -->
+  <section x-show="activeTab === 'ema_cross'" x-cloak>
+
+    <!-- Strategy description banner -->
+    <div class="card mb-4 p-4" style="background:#F5F0FF; border:1px solid #C4B5FD;">
+      <div class="font-semibold text-purple mb-1" style="font-size:0.85rem; letter-spacing:0.05em;">
+        Strategy 2 — EMA Crossover
+      </div>
+      <p class="text-xs text-muted leading-relaxed">
+        <strong>Entry:</strong> 5-min trend filter (Price vs EMA200, EMA9 vs EMA21) + 1-min EMA9 crosses EMA21 with volume confirm.<br>
+        <strong>Exit:</strong> Opposite EMA cross on 1-min — no fixed take profit. Hard stop −10%; breakeven at +10%; trail 5% from +20%.<br>
+        <strong>Note:</strong> Enable S2 in <em>Settings → S2 – EMA Cross: Core</em> before the scanner will scan these symbols.
+      </p>
+    </div>
+
+    <!-- S2 Symbol management -->
+    <div class="flex items-center justify-between mb-4">
+      <span class="font-semibold" style="color:#1C1035;">EMA Cross Symbols</span>
+      <form @submit.prevent="addSymbolS2()" class="flex gap-2">
+        <input x-model="newTickerS2" placeholder="TICKER"
+               style="width:7rem; text-transform:uppercase;" maxlength="8" />
+        <button type="submit" class="btn-primary">Add</button>
+      </form>
+    </div>
+
+    <div x-show="symbolsS2.length === 0" class="empty-state">No S2 symbols yet — add one above.</div>
+
+    <div class="card overflow-hidden mb-5">
+      <table x-show="symbolsS2.length > 0" class="data-table">
+        <thead>
+          <tr><th>Ticker</th><th>Status</th><th>Added</th><th></th></tr>
+        </thead>
+        <tbody>
+          <template x-for="s in symbolsS2" :key="s.id">
+            <tr>
+              <td class="font-bold text-white" x-text="s.ticker"></td>
+              <td>
+                <button @click="toggleSymbolS2(s)"
+                  :class="s.active ? 'badge-green' : 'badge-gray'"
+                  x-text="s.active ? 'Active' : 'Inactive'"></button>
+              </td>
+              <td class="text-muted text-xs" x-text="fmtDate(s.created_at)"></td>
+              <td class="text-right">
+                <button @click="deleteSymbolS2(s.id)" class="action-btn-danger">Remove</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- S2 Settings panels (inline subset — full settings in the Settings tab) -->
+    <div class="font-semibold text-xs text-muted mb-3" style="text-transform:uppercase; letter-spacing:0.08em;">
+      Quick Settings
+    </div>
+
+    <template x-for="group in configGroups.filter(g => g.id.startsWith('s2_'))" :key="group.id">
+      <div class="card mb-4">
+        <div class="card-header flex justify-between items-center">
+          <span x-text="group.label"></span>
+          <button @click="saveConfigGroup(group)" class="btn-xs"
+            :class="{
+              'btn-xs': true,
+              'btn-saving': configSaving[group.id] === 'saving',
+              'btn-saved':  configSaving[group.id] === 'saved',
+              'btn-error':  configSaving[group.id] === 'error',
+            }">
+            <span x-show="configSaving[group.id] === 'idle'    || !configSaving[group.id]">Save</span>
+            <span x-show="configSaving[group.id] === 'saving'" >Saving…</span>
+            <span x-show="configSaving[group.id] === 'saved'"  >Saved ✓</span>
+            <span x-show="configSaving[group.id] === 'error'"  >Error ✗</span>
+          </button>
+        </div>
+        <div class="p-4 grid grid-2 gap-3">
+          <template x-for="field in group.fields" :key="field.key">
+            <div>
+              <label class="label-xs" x-text="field.label"></label>
+              <div class="text-xs text-muted mb-1" x-text="field.hint" style="font-size:0.68rem; line-height:1.35;"></div>
+              <template x-if="field.type === 'bool'">
+                <label class="flex items-center gap-2 text-xs" style="color:#1C1035; margin-top:0.25rem;">
+                  <input type="checkbox" :checked="config[field.key]"
+                         @change="config[field.key] = $event.target.checked" />
+                  <span x-text="config[field.key] ? 'On' : 'Off'"></span>
+                </label>
+              </template>
+              <template x-if="field.type !== 'bool'">
+                <input :type="field.type === 'number' ? 'number' : 'text'"
+                       :step="field.step || 1"
+                       x-model="config[field.key]"
+                       class="w-full mt-1" />
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+  </section>
+
+  <!-- ════════════════════════════════════ INDICATORS ════════════════════ -->
+  <section x-show="activeTab === 'indicators'" x-cloak>
+
+    <!-- Header row -->
+    <div class="flex items-start justify-between mb-4 gap-4">
+      <p class="text-xs text-muted max-w-2xl leading-relaxed">
+        Master list of available indicators. Add custom ones here — then implement the logic in
+        <code class="slug">services/indicators.py</code>.
+        Active indicators are evaluated by the entry scanner on every tick.
+      </p>
+      <button @click="showAddIndicator = !showAddIndicator" class="btn-primary shrink-0" style="font-size:0.78rem;">
+        + Add Indicator
+      </button>
+    </div>
+
+    <!-- Add indicator form -->
+    <div x-show="showAddIndicator" x-transition
+         class="card mb-4 p-4 border-purple" style="border-color:#7C3AED;">
+      <div class="text-xs font-semibold text-purple mb-2" style="letter-spacing:0.08em;text-transform:uppercase;">
+        New Indicator
+      </div>
+      <div class="grid grid-2 gap-3 mb-2">
+        <div>
+          <label class="label-xs">Key (slug)</label>
+          <input x-model="newIndicator.key" placeholder="e.g. my_indicator" class="w-full mt-1" />
+        </div>
+        <div>
+          <label class="label-xs">Label</label>
+          <input x-model="newIndicator.name" placeholder="e.g. My Indicator" class="w-full mt-1" />
+        </div>
+      </div>
+      <div class="grid grid-2 gap-3 mb-2">
+        <div>
+          <label class="label-xs">Category</label>
+          <select x-model="newIndicator.category" class="w-full mt-1">
+            <option value="trend">trend</option>
+            <option value="momentum">momentum</option>
+            <option value="entry">entry</option>
+            <option value="sentiment">sentiment</option>
+            <option value="general">general</option>
+          </select>
+        </div>
+        <div class="flex items-end">
+          <label class="flex items-center gap-2 text-xs" style="color:#C4B5FD; padding-bottom:0.25rem;">
+            <input type="checkbox" x-model="newIndicator.active" />
+            Active by default
+          </label>
+        </div>
+      </div>
+      <div class="mb-2">
+        <label class="label-xs">Description</label>
+        <textarea x-model="newIndicator.description" placeholder="What does this indicator check?"
+                  class="w-full mt-1 rows-2"></textarea>
+      </div>
+      <div class="flex gap-2">
+        <button @click="addIndicator()" class="btn-primary" style="font-size:0.78rem;">Save</button>
+        <button @click="showAddIndicator = false" class="btn-xs">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Indicator table -->
+    <div class="card overflow-hidden mb-5">
+      <div x-show="indicators.length === 0" class="empty-state">No indicators yet.</div>
+      <table x-show="indicators.length > 0" style="width:100%;">
+        <thead>
+          <tr>
+            <th class="ind-th" style="width:13%;">KEY</th>
+            <th class="ind-th" style="width:17%;">LABEL</th>
+            <th class="ind-th">DESCRIPTION</th>
+            <th class="ind-th" style="width:9%;">CATEGORY</th>
+            <th class="ind-th" style="width:9%;text-align:center;">STATUS</th>
+            <th class="ind-th" style="width:17%;text-align:right;">ACTIONS</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="ind in indicators" :key="ind.id">
+            <tr style="transition:background 0.12s;" @mouseenter="$el.style.background='#FAF8FF'" @mouseleave="$el.style.background=''">
+              <td class="ind-td"><code class="slug" x-text="ind.key"></code></td>
+              <td class="ind-td font-semibold text-white" x-text="ind.name"></td>
+              <td class="ind-td text-muted leading-relaxed" x-text="ind.description"></td>
+              <td class="ind-td"><span class="category-badge" x-text="ind.category"></span></td>
+              <td class="ind-td" style="text-align:center;">
+                <span :class="ind.active ? 'status-active' : 'status-inactive'"
+                      x-text="ind.active ? 'ACTIVE' : 'INACTIVE'"></span>
+              </td>
+              <td class="ind-td" style="text-align:right;">
+                <div class="flex justify-end gap-2">
+                  <button x-show="ind.active"  @click="toggleIndicator(ind)" class="action-btn-outline">Disable</button>
+                  <button x-show="!ind.active" @click="toggleIndicator(ind)" class="action-btn-enable">Enable</button>
+                  <button @click="deleteIndicator(ind.id)" class="action-btn-danger">Delete</button>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Live indicator eval panel ─────────────────────────────────── -->
+    <div class="card overflow-hidden">
+      <div class="card-header flex justify-between items-center">
+        <span>Live Indicator Check</span>
+        <div class="flex gap-2 items-center">
+          <input x-model="evalSymbol" placeholder="TICKER" style="width:6rem;font-size:0.75rem;padding:0.2rem 0.5rem;" />
+          <select x-model="evalDirection" style="font-size:0.75rem;padding:0.2rem 0.5rem;">
+            <option value="CALL">CALL</option>
+            <option value="PUT">PUT</option>
+          </select>
+          <button @click="runEval()" class="btn-primary" style="font-size:0.72rem;padding:0.25rem 0.7rem;">
+            Run ▶
+          </button>
+        </div>
+      </div>
+
+      <div x-show="evalLoading" class="empty-state" style="padding:1.5rem;">
+        Fetching Tradier data…
+      </div>
+
+      <div x-show="!evalLoading && evalResults.length === 0 && !evalError" class="empty-state" style="padding:1.5rem;">
+        Enter a ticker and click Run to evaluate active indicators live.
+      </div>
+
+      <div x-show="evalError" class="empty-state" style="color:#BE123C;padding:1.5rem;" x-text="evalError"></div>
+
+      <div x-show="evalResults.length > 0 && !evalLoading">
+        <!-- summary bar -->
+        <div class="flex items-center gap-3" style="padding:0.6rem 1rem; border-bottom:1px solid #DDD6EE; background:#F5F3FA;">
+          <span class="text-xs text-muted">
+            <span class="font-bold text-white" x-text="evalSymbol"></span>
+            &nbsp;·&nbsp;
+            <span x-text="evalDirection"></span>
+            &nbsp;·&nbsp;
+            <span x-text="evalMeta.bars_1m + ' 1-min bars, ' + evalMeta.bars_15m + ' 15-min bars'"></span>
+          </span>
+          <!-- full_pass badge (all 13 gates) -->
+          <span :class="evalFullPass ? 'badge-green' : 'badge-red'"
+                x-text="evalFullPass
+                  ? '✓ All 13 gates pass — scanner will enter on next tick'
+                  : '✗ Entry blocked — see gate stack below'">
+          </span>
+        </div>
+
+        <!-- ── Gate stack banner ──────────────────────────────────── -->
+        <div x-show="evalGateStack.length > 0">
+
+          <!-- Blocker callout -->
+          <div x-show="evalFirstBlocker"
+               style="margin:0.75rem 1rem 0; padding:0.6rem 0.9rem; border-radius:6px;
+                      background:#FFF1F2; border:1px solid #FECDD3; display:flex; align-items:center; gap:0.5rem;">
+            <span style="font-size:1rem;">🚫</span>
+            <span class="text-xs" style="color:#BE123C; font-weight:600;">
+              Entry blocked at:
+              <span x-text="evalFirstBlocker ? evalFirstBlocker.id + ' — ' + evalFirstBlocker.name : ''"></span>
+            </span>
+            <span class="text-xs" style="color:#7C6FAA;" x-text="evalFirstBlocker ? '· ' + evalFirstBlocker.reason : ''"></span>
+          </div>
+
+          <!-- All-pass callout -->
+          <div x-show="evalFullPass"
+               style="margin:0.75rem 1rem 0; padding:0.6rem 0.9rem; border-radius:6px;
+                      background:#F0FDF4; border:1px solid #BBF7D0; display:flex; align-items:center; gap:0.5rem;">
+            <span style="font-size:1rem;">✅</span>
+            <span class="text-xs" style="color:#15803D; font-weight:600;">
+              All 13 gates pass — the scanner will place an entry on the next tick.
+            </span>
+          </div>
+
+          <!-- Collapsible gate stack table -->
+          <div style="margin:0.75rem 1rem 0;">
+            <button @click="evalGateOpen = !evalGateOpen"
+                    class="text-xs text-muted"
+                    style="background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;gap:0.3rem;">
+              <span x-text="evalGateOpen ? '▾' : '▸'"></span>
+              <span x-text="'Full Gate Stack (' + evalGateStack.length + ' checks)'"></span>
+            </button>
+          </div>
+
+          <div x-show="evalGateOpen" style="margin-bottom:0.75rem;">
+            <table style="width:100%; border-top:1px solid #DDD6EE; margin-top:0.4rem;">
+              <thead>
+                <tr style="background:#F5F3FA;">
+                  <th class="ind-th" style="width:7%;">GATE</th>
+                  <th class="ind-th" style="width:22%;">NAME</th>
+                  <th class="ind-th" style="width:10%;text-align:center;">RESULT</th>
+                  <th class="ind-th">DETAIL</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="gate in evalGateStack" :key="gate.id">
+                  <tr :style="gateRowStyle(gate)" style="border-bottom:1px solid #F0EDF8;">
+                    <td class="ind-td">
+                      <code class="slug" style="font-size:0.68rem;" x-text="gate.id"></code>
+                    </td>
+                    <td class="ind-td text-xs" x-text="gate.name"></td>
+                    <td class="ind-td" style="text-align:center;">
+                      <span :class="gate.pass ? 'eval-fires' : 'eval-miss'"
+                            x-text="gate.pass ? '✓ Pass' : '✗ Fail'"></span>
+                    </td>
+                    <td class="ind-td text-muted text-xs" x-text="gate.reason"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <!-- ── End gate stack ──────────────────────────────────────── -->
+
+        <!-- L1 indicator detail table -->
+        <div style="border-top:1px solid #DDD6EE; margin-top:0.25rem;">
+          <div class="text-xs text-muted" style="padding:0.4rem 1rem 0.2rem; font-weight:600; letter-spacing:0.05em;">
+            LAYER 1 — INDICATOR DETAIL
+          </div>
+          <table style="width:100%;">
+            <thead>
+              <tr>
+                <th class="ind-th" style="width:14%;">INDICATOR</th>
+                <th class="ind-th" style="width:13%;text-align:center;">FIRES?</th>
+                <th class="ind-th" style="width:12%;text-align:center;">VALUE</th>
+                <th class="ind-th">REASON</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="r in evalResults" :key="r.key">
+                <tr style="border-bottom:1px solid #F0EDF8;">
+                  <td class="ind-td"><code class="slug" x-text="r.key"></code></td>
+                  <td class="ind-td" style="text-align:center;">
+                    <span :class="r.fires ? 'eval-fires' : 'eval-miss'"
+                          x-text="r.fires ? '✓ Yes' : '✗ No'"></span>
+                  </td>
+                  <td class="ind-td text-center text-orange" x-text="r.value ?? '—'"></td>
+                  <td class="ind-td text-muted text-xs" x-text="r.reason"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ════════════════════════════════════ TRADES ════════════════════ -->
+  <section x-show="activeTab === 'trades'" x-cloak>
+
+    <!-- Pill sub-tabs -->
+    <div class="flex items-center justify-between mb-4">
+      <div class="pill-tabs" style="margin-bottom:0;">
+        <button @click="tradeSubTab = 'open'"
+                :class="tradeSubTab === 'open' ? 'pill-tab active' : 'pill-tab'">
+          Open Positions
+        </button>
+        <button @click="tradeSubTab = 'closed'; loadClosed()"
+                :class="tradeSubTab === 'closed' ? 'pill-tab active' : 'pill-tab'">
+          Closed Today
+        </button>
+        <button @click="tradeSubTab = 'history'; loadHistory()"
+                :class="tradeSubTab === 'history' ? 'pill-tab active' : 'pill-tab'">
+          History (30d)
+        </button>
+      </div>
+      <button @click="tradeSubTab === 'open' ? loadLive() : tradeSubTab === 'closed' ? loadClosed() : loadHistory()"
+              class="btn-xs">&#8635; Refresh</button>
+    </div>
+
+    <!-- ── Open Positions ─────────────────────────────────────────── -->
+    <div x-show="tradeSubTab === 'open'">
+
+      <!-- ── Orphaned Positions Warning ─────────────────────────────── -->
+      <div x-show="orphanedPositions.length > 0" class="mb-4">
+        <!-- Warning banner -->
+        <div style="background:#FEF9EC; border:1.5px solid #F59E0B; border-radius:0.5rem;
+                    padding:0.6rem 1rem; margin-bottom:0.6rem; display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-size:1.1rem;">⚠</span>
+          <span style="color:#92400E; font-weight:600; font-size:0.82rem;">
+            Orphaned Positions
+          </span>
+          <span style="color:#78350F; font-size:0.78rem; margin-left:0.25rem;">
+            — found in Tradier but not tracked by Ajoy. Adopt them so Ajoy manages exits,
+            or close them directly. Auto-stop is active: orphans are sold if they drop ≥ stop-loss %.
+          </span>
+        </div>
+        <!-- Orphan table -->
+        <div class="card overflow-hidden" style="border:1.5px solid #FDE68A;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>CONTRACT</th>
+                <th style="text-align:right;">QTY</th>
+                <th style="text-align:right;">COST BASIS</th>
+                <th style="text-align:right;">CURRENT PRICE</th>
+                <th style="text-align:right;">EST. P&L</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="p in orphanedPositions" :key="p.symbol">
+                <tr>
+                  <td><code class="slug" x-text="p.symbol"></code></td>
+                  <td class="text-right" x-text="p.qty"></td>
+                  <td class="text-right text-muted" x-text="fmtPrice(p.cost_per_unit)"></td>
+                  <td class="text-right font-bold"
+                      :style="(p.current_price||0) >= (p.cost_per_unit||0) ? 'color:#15803D' : 'color:#BE123C'"
+                      x-text="p.current_price != null ? fmtPrice(p.current_price) : '–'"></td>
+                  <td class="text-right font-bold"
+                      :style="(p.live_pnl||0) >= 0 ? 'color:#15803D' : 'color:#BE123C'"
+                      x-text="p.live_pnl != null ? fmtDollar(p.live_pnl) : '–'"></td>
+                  <td style="text-align:right; white-space:nowrap; display:flex; gap:0.4rem; justify-content:flex-end; align-items:center; padding:0.5rem 0.85rem;">
+                    <button @click="adoptOrphan(p.symbol, p.qty, p.cost_per_unit)"
+                            class="action-btn-outline"
+                            style="background:#EDE9FE; color:#5B21B6;"
+                            title="Adopt into Ajoy — full stop/TP management">
+                      Adopt
+                    </button>
+                    <button @click="closeOrphan(p.symbol, p.qty)" class="action-btn-danger">
+                      Close
+                    </button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div x-show="liveTrades.length === 0 && orphanedPositions.length === 0" class="empty-state" style="padding:4rem 0;">
+        No open positions. The agent is scanning for setups during market hours.
+      </div>
+
+      <div class="card overflow-hidden" x-show="liveTrades.length > 0">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>SYMBOL</th>
+              <th>DIRECTION</th>
+              <th>CONTRACT</th>
+              <th style="text-align:right;">QTY</th>
+              <th style="text-align:right;">ENTRY PRICE</th>
+              <th style="text-align:right;">CURRENT PRICE</th>
+              <th style="text-align:right;">STOP LOSS</th>
+              <th style="text-align:right;">TARGET</th>
+              <th>TIME</th>
+              <th style="text-align:right;">UNREALISED P&L</th>
+              <th style="text-align:center;">P&L TREND</th>
+              <th style="text-align:center;">STOCK TREND</th>
+              <th style="text-align:center;"
+                  title="Is the stock still on the correct side of VWAP? This — not option P&L — tells you whether to hold or close manually.">THESIS ⓘ</th>
+              <th></th>
+            </tr>
+          </thead>
+          <!-- Each iteration owns its own <tbody> — single root avoids
+               Alpine v3's fragile multi-root x-for behaviour in tables. -->
+          <template x-for="t in liveTrades" :key="t.id">
+            <tbody>
+
+              <!-- ── Main trade row ────────────────────────────────── -->
+              <tr>
+                <td class="font-bold" style="color:#1C1035;">
+                  <span x-text="t.symbol"></span>
+                  <span x-show="t.strategy_name === 'ema_cross'"
+                        style="display:inline-block; margin-left:0.35rem;
+                               padding:0.1rem 0.4rem; border-radius:4px;
+                               font-size:0.62rem; font-weight:700; letter-spacing:0.06em;
+                               background:#EDE9FE; color:#6D28D9; vertical-align:middle;">
+                    S2
+                  </span>
+                </td>
+                <td>
+                  <span :class="t.direction === 'CALL' ? 'badge-green' : 'badge-red'"
+                        x-text="t.direction"></span>
+                </td>
+                <td><code class="slug" x-text="t.option_symbol"></code></td>
+                <td class="text-right" x-text="t.quantity"></td>
+                <td class="text-right" x-text="fmtPrice(t.entry_price)"></td>
+                <td class="text-right font-bold"
+                    :style="(t.current_price||0) >= (t.entry_price||0) ? 'color:#15803D' : 'color:#BE123C'"
+                    x-text="fmtPrice(t.current_price)"></td>
+                <!-- Stop loss — highlight if being edited -->
+                <td class="text-right text-red"
+                    :style="editingTradeId === t.id ? 'color:#7C3AED; font-weight:700;' : 'color:#BE123C;'"
+                    x-text="fmtPrice(t.stop_price)"></td>
+                <!-- Target — highlight if being edited -->
+                <td class="text-right text-emerald"
+                    :style="editingTradeId === t.id ? 'color:#7C3AED; font-weight:700;' : ''">
+                  <span x-text="fmtPrice(t.tp2_price)"></span>
+                  <span class="text-xs text-muted" x-text="' (' + targetPct(t) + ')'"></span>
+                </td>
+                <td class="text-xs text-muted" x-text="fmtDate(t.entry_time)"></td>
+                <td class="text-right">
+                  <div class="font-bold"
+                       :style="(t.live_pnl||0) >= 0 ? 'color:#15803D' : 'color:#BE123C'"
+                       x-text="fmtDollar(t.live_pnl)"></div>
+                  <div class="text-xs text-muted"
+                       x-text="t.live_pnl_pct != null
+                         ? ((t.live_pnl_pct > 0 ? '+' : '') + t.live_pnl_pct.toFixed(1) + '%') : '–'">
+                  </div>
+                </td>
+                <td style="text-align:center;">
+                  <span :style="pnlTrendStyle(t)" x-text="pnlTrendLabel(t)"
+                        style="font-size:1.05rem;" :title="pnlTrendTitle(t)"></span>
+                </td>
+                <td style="text-align:center;">
+                  <span :style="trendStyle(t.trend)" x-text="trendLabel(t.trend)"
+                        style="font-size:0.78rem; font-weight:600;"></span>
+                </td>
+
+                <!-- ── THESIS: stock vs live VWAP ─────────────────────── -->
+                <!-- "intact"  = stock clearly on correct VWAP side → HOLD  -->
+                <!-- "at_risk" = within 0.2% of VWAP                → WATCH -->
+                <!-- "broken"  = stock crossed to wrong VWAP side   → CLOSE -->
+                <td style="text-align:center;"
+                    :title="thesisTooltip(t)">
+                  <span x-show="t.thesis_status === 'intact'"
+                        style="display:inline-block; padding:0.2rem 0.55rem; border-radius:9999px;
+                               font-size:0.72rem; font-weight:700; letter-spacing:0.04em;
+                               background:#DCFCE7; color:#15803D; white-space:nowrap;">
+                    ✓ INTACT
+                  </span>
+                  <span x-show="t.thesis_status === 'at_risk'"
+                        style="display:inline-block; padding:0.2rem 0.55rem; border-radius:9999px;
+                               font-size:0.72rem; font-weight:700; letter-spacing:0.04em;
+                               background:#FEF9C3; color:#92400E; white-space:nowrap;">
+                    ⚠ AT RISK
+                  </span>
+                  <span x-show="t.thesis_status === 'broken'"
+                        style="display:inline-block; padding:0.2rem 0.55rem; border-radius:9999px;
+                               font-size:0.72rem; font-weight:700; letter-spacing:0.04em;
+                               background:#FEE2E2; color:#BE123C; white-space:nowrap;">
+                    ✗ BROKEN
+                  </span>
+                  <span x-show="!t.thesis_status" style="color:#9CA3AF; font-size:0.8rem;">–</span>
+                </td>
+
+                <td style="text-align:right; white-space:nowrap;">
+                  <div class="flex justify-end gap-2">
+                    <!-- Edit levels toggle -->
+                    <button @click="openLevelEditor(t)"
+                            :class="editingTradeId === t.id ? 'action-btn-enable' : 'action-btn-outline'"
+                            title="Override stop loss / take profit"
+                            style="font-size:0.8rem;">✎</button>
+                    <button @click="closeTrade(t.id)" class="action-btn-danger">Close</button>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- ── Inline level editor row (shown when this trade is selected) ── -->
+              <tr x-show="editingTradeId === t.id"
+                  style="background:#F5F0FF; border-bottom:2px solid #7C3AED;">
+                <td colspan="14" style="padding:0.65rem 1rem;">
+                  <div class="flex items-center gap-4 flex-wrap">
+
+                    <span class="text-xs font-semibold" style="color:#5B21B6; white-space:nowrap;">
+                      Override levels for <span x-text="t.symbol"></span>
+                    </span>
+
+                    <!-- Stop loss input -->
+                    <div class="flex items-center gap-2">
+                      <label class="text-xs text-muted" style="white-space:nowrap;">
+                        Stop Loss $
+                        <span class="text-xs" style="color:#7C3AED;"
+                              x-text="'(current: ' + fmtPrice(t.stop_price) + ')'"></span>
+                      </label>
+                      <input type="number" step="0.01" min="0.01"
+                             x-model="editStopPrice"
+                             placeholder="e.g. 1.20"
+                             style="width:6rem; font-family:monospace; font-size:0.85rem;" />
+                    </div>
+
+                    <!-- Take profit input -->
+                    <div class="flex items-center gap-2">
+                      <label class="text-xs text-muted" style="white-space:nowrap;">
+                        Take Profit $
+                        <span class="text-xs" style="color:#7C3AED;"
+                              x-text="'(current: ' + fmtPrice(t.tp2_price) + ')'"></span>
+                      </label>
+                      <input type="number" step="0.01" min="0.01"
+                             x-model="editTpPrice"
+                             placeholder="e.g. 2.80"
+                             style="width:6rem; font-family:monospace; font-size:0.85rem;" />
+                    </div>
+
+                    <!-- Save / cancel -->
+                    <button @click="saveLevels(t)"
+                            :disabled="editSaving"
+                            class="btn-primary"
+                            style="font-size:0.78rem; padding:0.25rem 0.85rem;"
+                            x-text="editSaving ? 'Saving…' : 'Save'">
+                    </button>
+                    <button @click="editingTradeId = null"
+                            class="btn-xs"
+                            style="font-size:0.78rem;">
+                      Cancel
+                    </button>
+
+                    <!-- Error message -->
+                    <span x-show="editError"
+                          class="text-xs"
+                          style="color:#BE123C;"
+                          x-text="editError"></span>
+
+                    <span class="text-xs text-muted" style="margin-left:auto;">
+                      Leave a field blank to keep its current value. Stop also updates the Tradier resting order.
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+            </tbody>
+          </template>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Closed Today ───────────────────────────────────────────── -->
+    <div x-show="tradeSubTab === 'closed'">
+      <!-- Summary strip -->
+      <div x-show="closedToday.length > 0"
+           class="flex items-center gap-4 mb-3"
+           style="background:#F5F3FA; border:1px solid #DDD6EE; border-radius:0.5rem; padding:0.55rem 1rem;">
+        <span class="text-xs text-muted">Today's P&L</span>
+        <span class="font-bold"
+              :style="todaySummary.total_pnl >= 0 ? 'color:#15803D' : 'color:#BE123C'"
+              x-text="fmtDollar(todaySummary.total_pnl)"></span>
+        <span class="text-xs text-muted"
+              x-text="'· ' + todaySummary.winners + 'W / ' + todaySummary.losers + 'L · ' + todaySummary.trade_count + ' trades'">
+        </span>
+      </div>
+
+      <div x-show="closedToday.length === 0" class="empty-state" style="padding:4rem 0;">
+        No closed trades today.
+      </div>
+
+      <div class="card overflow-hidden card-top-teal" x-show="closedToday.length > 0">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>SYMBOL</th>
+              <th>DIRECTION</th>
+              <th style="text-align:right;">ENTRY</th>
+              <th style="text-align:right;">EXIT</th>
+              <th style="text-align:right;">QTY</th>
+              <th style="text-align:right;">P&L</th>
+              <th>EXIT REASON</th>
+              <th>ENTRY TIME</th>
+              <th>EXIT TIME</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="t in closedToday" :key="t.id">
+              <tr>
+                <td class="font-bold" style="color:#1C1035;">
+                  <span x-text="t.symbol"></span>
+                  <span x-show="t.strategy_name === 'ema_cross'"
+                        style="display:inline-block; margin-left:0.35rem;
+                               padding:0.1rem 0.4rem; border-radius:4px;
+                               font-size:0.62rem; font-weight:700; letter-spacing:0.06em;
+                               background:#EDE9FE; color:#6D28D9; vertical-align:middle;">
+                    S2
+                  </span>
+                </td>
+                <td>
+                  <span :class="t.direction === 'CALL' ? 'badge-green' : 'badge-red'"
+                        x-text="t.direction"></span>
+                </td>
+                <td class="text-right" x-text="fmtPrice(t.entry_price)"></td>
+                <td class="text-right" x-text="fmtPrice(t.exit_price)"></td>
+                <td class="text-right" x-text="t.quantity"></td>
+                <td class="text-right font-bold"
+                    :style="(t.pnl || 0) >= 0 ? 'color:#15803D' : 'color:#BE123C'"
+                    x-text="fmtDollar(t.pnl)"></td>
+                <td>
+                  <span :class="exitReasonClass(t.exit_reason)"
+                        x-text="exitReasonLabel(t.exit_reason)"></span>
+                </td>
+                <td class="text-xs text-muted" x-text="fmtTime(t.entry_time)"></td>
+                <td class="text-xs text-muted" x-text="fmtTime(t.exit_time)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── History 30d ────────────────────────────────────────────── -->
+    <div x-show="tradeSubTab === 'history'">
+      <div x-show="history.length === 0" class="empty-state" style="padding:4rem 0;">
+        No trade history in the last 30 days.
+      </div>
+
+      <div x-show="history.length > 0">
+          <!-- Cumulative P&L chart -->
+          <div class="card card-top-blue mb-4" style="padding:1rem;">
+            <div class="text-xs font-bold text-muted mb-3"
+                 style="letter-spacing:0.08em; text-transform:uppercase;">
+              Cumulative P&L (30 Days)
+            </div>
+            <div style="height:240px; position:relative;">
+              <canvas id="pnlChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Filtered trade log -->
+          <div class="card overflow-hidden card-top-orange">
+            <table class="data-table">
+              <thead>
+                <!-- Column labels -->
+                <tr>
+                  <th>DATE</th>
+                  <th>SYMBOL</th>
+                  <th>DIR</th>
+                  <th style="text-align:right;">ENTRY $</th>
+                  <th style="text-align:right;">EXIT $</th>
+                  <th style="text-align:right;">P&L</th>
+                  <th>EXIT REASON</th>
+                  <th>ENTRY TIME</th>
+                  <th>EXIT TIME</th>
+                </tr>
+                <!-- Filter row -->
+                <tr style="background:#FFFFFF;">
+                  <td style="padding:0.35rem 0.85rem;">
+                    <select class="filter-select" x-model="historyFilters.date">
+                      <template x-for="d in historyDates" :key="d">
+                        <option :value="d" x-text="d"></option>
+                      </template>
+                    </select>
+                  </td>
+                  <td style="padding:0.35rem 0.85rem;">
+                    <select class="filter-select" x-model="historyFilters.symbol">
+                      <template x-for="s in historySymbols" :key="s">
+                        <option :value="s" x-text="s"></option>
+                      </template>
+                    </select>
+                  </td>
+                  <td style="padding:0.35rem 0.85rem;">
+                    <select class="filter-select" x-model="historyFilters.dir">
+                      <option value="All">All</option>
+                      <option value="CALL">CALL</option>
+                      <option value="PUT">PUT</option>
+                    </select>
+                  </td>
+                  <td colspan="3"></td>
+                  <td style="padding:0.35rem 0.85rem;">
+                    <select class="filter-select" x-model="historyFilters.reason">
+                      <template x-for="r in historyReasons" :key="r">
+                        <option :value="r" x-text="r"></option>
+                      </template>
+                    </select>
+                  </td>
+                  <td colspan="2"></td>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-if="filteredHistory().length === 0">
+                  <tr>
+                    <td colspan="9" class="text-center text-muted"
+                        style="padding:2rem; font-size:0.82rem;">
+                      No trades match the current filters.
+                    </td>
+                  </tr>
+                </template>
+                <template x-for="t in filteredHistory()" :key="t.id">
+                  <tr>
+                    <td class="text-xs text-muted" x-text="fmtDay(t.exit_time)"></td>
+                    <td class="font-bold" style="color:#1C1035;">
+                      <span x-text="t.symbol"></span>
+                      <span x-show="t.strategy_name === 'ema_cross'"
+                            style="display:inline-block; margin-left:0.35rem;
+                                   padding:0.1rem 0.4rem; border-radius:4px;
+                                   font-size:0.62rem; font-weight:700; letter-spacing:0.06em;
+                                   background:#EDE9FE; color:#6D28D9; vertical-align:middle;">
+                        S2
+                      </span>
+                    </td>
+                    <td>
+                      <span :class="t.direction === 'CALL' ? 'badge-green' : 'badge-red'"
+                            x-text="t.direction"></span>
+                    </td>
+                    <td class="text-right" x-text="fmtPrice(t.entry_price)"></td>
+                    <td class="text-right" x-text="fmtPrice(t.exit_price)"></td>
+                    <td class="text-right font-bold"
+                        :style="(t.pnl || 0) >= 0 ? 'color:#15803D' : 'color:#BE123C'"
+                        x-text="fmtDollar(t.pnl)"></td>
+                    <td>
+                      <span :class="exitReasonClass(t.exit_reason)"
+                            x-text="exitReasonLabel(t.exit_reason)"></span>
+                    </td>
+                    <td class="text-xs text-muted" x-text="fmtTime(t.entry_time)"></td>
+                    <td class="text-xs text-muted" x-text="fmtTime(t.exit_time)"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ════════════════════════════════════ SETTINGS ══════════════════════ -->
+  <section x-show="activeTab === 'settings'" x-cloak>
+
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-xs text-muted max-w-2xl leading-relaxed">
+        Edit bot parameters live — changes take effect on the next scan tick
+        (~60 s) <strong>without a restart</strong>. Values are also written back to <code class="slug">.env</code>.
+      </p>
+    </div>
+
+    <template x-for="group in configGroups" :key="group.id">
+      <div class="card mb-4" style="overflow:visible;">
+
+        <!-- Group header -->
+        <div class="card-header flex justify-between items-center">
+          <span x-text="group.label"></span>
+          <button
+            @click="saveConfigGroup(group)"
+            :disabled="configSaving[group.id] === 'saving'"
+            :class="configSaving[group.id] === 'saved'  ? 'btn-primary' :
+                    configSaving[group.id] === 'error'  ? 'btn-danger'  :
+                    configSaving[group.id] === 'saving' ? 'btn-xs'      : 'btn-primary'"
+            style="font-size:0.75rem; min-width:5rem;"
+            x-text="configSaving[group.id] === 'saving' ? 'Saving…' :
+                    configSaving[group.id] === 'saved'  ? '✓ Saved'  :
+                    configSaving[group.id] === 'error'  ? '✗ Error'  : 'Save'">
+          </button>
+        </div>
+
+        <!-- Fields grid -->
+        <div style="padding:1rem; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:1rem;">
+          <template x-for="field in group.fields" :key="field.key">
+            <div>
+              <label class="label-xs" x-text="field.label"></label>
+              <div class="text-xs text-muted mt-1 mb-1" x-text="field.hint" style="font-size:0.68rem; color:#9C8EC0;"></div>
+
+              <!-- Boolean toggle -->
+              <template x-if="field.type === 'bool'">
+                <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; margin-top:0.25rem;">
+                  <div style="position:relative; width:2.5rem; height:1.25rem; flex-shrink:0;"
+                       @click="config[field.key] = !config[field.key]">
+                    <div :style="config[field.key]
+                            ? 'background:#7C3AED; border-radius:9999px; width:100%; height:100%; transition:background 0.2s;'
+                            : 'background:#DDD6EE; border-radius:9999px; width:100%; height:100%; transition:background 0.2s;'">
+                    </div>
+                    <div :style="config[field.key]
+                            ? 'position:absolute; top:2px; left:calc(100% - 1.1rem); width:1rem; height:1rem; background:#fff; border-radius:50%; transition:left 0.2s;'
+                            : 'position:absolute; top:2px; left:2px; width:1rem; height:1rem; background:#fff; border-radius:50%; transition:left 0.2s;'">
+                    </div>
+                  </div>
+                  <span class="text-xs" :style="config[field.key] ? 'color:#7C3AED; font-weight:600;' : 'color:#9C8EC0;'"
+                        x-text="config[field.key] ? 'Enabled' : 'Disabled'"></span>
+                </label>
+              </template>
+
+              <!-- Number field -->
+              <template x-if="field.type === 'number'">
+                <input type="number"
+                       :step="field.step"
+                       x-model.number="config[field.key]"
+                       class="w-full mt-1"
+                       style="font-family:monospace; font-size:0.85rem;" />
+              </template>
+
+              <!-- Time field (HH:MM) -->
+              <template x-if="field.type === 'time'">
+                <input type="time"
+                       x-model="config[field.key]"
+                       class="w-full mt-1"
+                       style="font-family:monospace; font-size:0.85rem;" />
+              </template>
+
+              <!-- Text field -->
+              <template x-if="field.type === 'text'">
+                <input type="text"
+                       x-model="config[field.key]"
+                       class="w-full mt-1"
+                       style="font-size:0.85rem;" />
+              </template>
+
+            </div>
+          </template>
+        </div>
+
+      </div>
+    </template>
+
+  </section>
+
+</main>
+
+<script src="/static/js/app.js?v=10"></script>
+</body>
+</html>

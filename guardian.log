@@ -1,0 +1,30 @@
+2026-06-08 18:50:19 [GUARDIAN] INFO  ============================================================
+2026-06-08 18:50:19 [GUARDIAN] INFO  Guardian starting at 2026-06-09 01:50:19 UTC
+2026-06-08 18:50:19 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-06-08 18:50:19 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-06-08 18:50:19 [GUARDIAN] INFO  ============================================================
+2026-06-10 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-06-10 18:50:01 [GUARDIAN] INFO  Guardian starting at 2026-06-11 01:50:01 UTC
+2026-06-10 18:50:01 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-06-10 18:50:01 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-06-10 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-06-11 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-06-11 18:50:01 [GUARDIAN] INFO  Guardian starting at 2026-06-12 01:50:01 UTC
+2026-06-11 18:50:01 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-06-11 18:50:01 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-06-11 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-06-12 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-06-12 18:50:01 [GUARDIAN] INFO  Guardian starting at 2026-06-13 01:50:01 UTC
+2026-06-12 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-06-12 18:50:02 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-06-12 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-06-15 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-06-15 18:50:01 [GUARDIAN] INFO  Guardian starting at 2026-06-16 01:50:01 UTC
+2026-06-15 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-06-15 18:50:02 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-06-15 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-06-16 18:50:00 [GUARDIAN] INFO  ============================================================
+2026-06-16 18:50:00 [GUARDIAN] INFO  Guardian starting at 2026-06-17 01:50:00 UTC
+2026-06-16 18:50:01 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-06-16 18:50:01 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-06-16 18:50:01 [GUARDIAN] INFO  ============================================================

@@ -1,0 +1,5 @@
+# Superseded by pyproject.toml — use uv, not pip.
+# See: https://docs.astral.sh/uv/
+#
+#   uv sync          # install / update the venv
+#   uv run python run.py

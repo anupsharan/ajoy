@@ -1,0 +1,421 @@
+"""
+Tradier sandbox API client.
+
+All calls go to https://sandbox.tradier.com/v1/
+Token is read from settings.tradier_api_token.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from typing import Any, Optional
+
+import httpx
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Response dataclasses
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Quote:
+    symbol: str
+    last: float
+    bid: float
+    ask: float
+    volume: int
+    vwap: Optional[float] = None
+    change_pct: Optional[float] = None
+    description: Optional[str] = None
+
+
+@dataclass
+class OptionQuote:
+    symbol: str
+    underlying: str
+    expiration_date: str
+    option_type: str          # "call" | "put"
+    strike: float
+    bid: float
+    ask: float
+    last: float
+    volume: int
+    open_interest: int
+    delta: Optional[float] = None
+    gamma: Optional[float] = None
+    theta: Optional[float] = None
+    iv: Optional[float] = None
+    mid: float = 0.0
+
+    def __post_init__(self):
+        self.mid = round((self.bid + self.ask) / 2, 2)
+
+
+@dataclass
+class Bar:
+    time: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+
+@dataclass
+class Position:
+    symbol: str
+    quantity: int
+    cost_basis: float
+    date_acquired: Optional[str] = None
+
+
+@dataclass
+class AccountBalance:
+    account_value: float
+    cash: float
+    buying_power: float
+    option_buying_power: float
+
+
+@dataclass
+class OrderResult:
+    order_id: str
+    status: str
+    raw: dict = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Client
+# ---------------------------------------------------------------------------
+
+class TradierClient:
+    """Async Tradier REST client (sandbox)."""
+
+    def __init__(self):
+        self._base = settings.tradier_base_url.rstrip("/")
+        self._account_id = settings.tradier_account_id
+        self._headers = {
+            "Authorization": f"Bearer {settings.tradier_api_token}",
+            "Accept": "application/json",
+        }
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    async def _get(self, path: str, params: dict | None = None) -> Any:
+        url = f"{self._base}{path}"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(url, headers=self._headers, params=params or {})
+            resp.raise_for_status()
+            return resp.json()
+
+    async def _post(self, path: str, data: dict) -> Any:
+        url = f"{self._base}{path}"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, headers=self._headers, data=data)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def _delete(self, path: str) -> Any:
+        url = f"{self._base}{path}"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.delete(url, headers=self._headers)
+            resp.raise_for_status()
+            return resp.json()
+
+    # ------------------------------------------------------------------
+    # Market data
+    # ------------------------------------------------------------------
+
+    async def get_quote(self, symbol: str) -> Quote:
+        """Fetch a real-time equity quote."""
+        data = await self._get("/markets/quotes", {"symbols": symbol, "greeks": "false"})
+        q = data["quotes"]["quote"]
+        if isinstance(q, list):
+            q = q[0]
+        return Quote(
+            symbol=q["symbol"],
+            last=float(q.get("last") or q.get("close") or 0),
+            bid=float(q.get("bid") or 0),
+            ask=float(q.get("ask") or 0),
+            volume=int(q.get("volume") or 0),
+            change_pct=float(q.get("change_percentage") or 0),
+            description=q.get("description"),
+        )
+
+    async def get_option_quote(self, option_symbol: str) -> Optional[Quote]:
+        """Fetch a real-time quote for a single option contract."""
+        try:
+            data = await self._get("/markets/quotes", {"symbols": option_symbol, "greeks": "true"})
+            q = data["quotes"]["quote"]
+            if isinstance(q, list):
+                q = q[0]
+            return Quote(
+                symbol=q["symbol"],
+                last=float(q.get("last") or q.get("close") or 0),
+                bid=float(q.get("bid") or 0),
+                ask=float(q.get("ask") or 0),
+                volume=int(q.get("volume") or 0),
+            )
+        except Exception as exc:
+            logger.warning("get_option_quote(%s) failed: %s", option_symbol, exc)
+            return None
+
+    async def get_option_expirations(self, symbol: str) -> list[str]:
+        """Return list of expiration date strings (YYYY-MM-DD)."""
+        data = await self._get(
+            "/markets/options/expirations", {"symbol": symbol, "includeAllRoots": "true"}
+        )
+        exps = data.get("expirations", {}).get("date", [])
+        if isinstance(exps, str):
+            exps = [exps]
+        return exps
+
+    async def get_options_chain(
+        self, symbol: str, expiration: str, option_type: str = "both"
+    ) -> list[OptionQuote]:
+        """Fetch the full options chain for a given expiration."""
+        data = await self._get(
+            "/markets/options/chains",
+            {"symbol": symbol, "expiration": expiration, "greeks": "true"},
+        )
+        raw_options = data.get("options", {}).get("option", []) or []
+        if isinstance(raw_options, dict):
+            raw_options = [raw_options]
+
+        results: list[OptionQuote] = []
+        for o in raw_options:
+            otype = o.get("option_type", "").lower()
+            if option_type != "both" and otype != option_type.lower():
+                continue
+            greeks = o.get("greeks") or {}
+            results.append(
+                OptionQuote(
+                    symbol=o["symbol"],
+                    underlying=o.get("underlying", symbol),
+                    expiration_date=o.get("expiration_date", expiration),
+                    option_type=otype,
+                    strike=float(o.get("strike", 0)),
+                    bid=float(o.get("bid") or 0),
+                    ask=float(o.get("ask") or 0),
+                    last=float(o.get("last") or o.get("close") or 0),
+                    volume=int(o.get("volume") or 0),
+                    open_interest=int(o.get("open_interest") or 0),
+                    delta=float(greeks.get("delta") or 0) if greeks else None,
+                    gamma=float(greeks.get("gamma") or 0) if greeks else None,
+                    theta=float(greeks.get("theta") or 0) if greeks else None,
+                    iv=float(greeks.get("mid_iv") or 0) if greeks else None,
+                )
+            )
+        return results
+
+    async def get_intraday_bars(
+        self,
+        symbol: str,
+        interval: str = "15min",
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+    ) -> list[Bar]:
+        """
+        Fetch intraday OHLCV bars.
+        interval: '1min' | '5min' | '15min'
+        start/end: 'YYYY-MM-DD HH:MM' strings; defaults to today.
+        """
+        today = date.today().strftime("%Y-%m-%d")
+        params: dict = {
+            "symbol": symbol,
+            "interval": interval,
+            "start": start or f"{today} 09:30",
+            "end": end or f"{today} 16:00",
+            "session_filter": "open",
+        }
+        try:
+            data = await self._get("/markets/timesales", params)
+            series = data.get("series", {})
+            if not series:
+                return []
+            raw = series.get("data", [])
+            if isinstance(raw, dict):
+                raw = [raw]
+            bars: list[Bar] = []
+            for r in raw:
+                bars.append(
+                    Bar(
+                        time=datetime.fromisoformat(r["time"]),
+                        open=float(r["open"]),
+                        high=float(r["high"]),
+                        low=float(r["low"]),
+                        close=float(r["close"]),
+                        volume=int(r["volume"]),
+                    )
+                )
+            return bars
+        except Exception as exc:
+            logger.error("get_intraday_bars(%s) failed: %s", symbol, exc)
+            return []
+
+    # ------------------------------------------------------------------
+    # Account / positions
+    # ------------------------------------------------------------------
+
+    async def get_positions(self) -> list[Position]:
+        """Return all current positions in the account."""
+        data = await self._get(f"/accounts/{self._account_id}/positions")
+        raw = data.get("positions", {})
+        if not raw or raw == "null":
+            return []
+        positions = raw.get("position", [])
+        if isinstance(positions, dict):
+            positions = [positions]
+        return [
+            Position(
+                symbol=p["symbol"],
+                quantity=int(p["quantity"]),
+                cost_basis=float(p["cost_basis"]),
+                date_acquired=p.get("date_acquired"),
+            )
+            for p in positions
+        ]
+
+    async def get_account_balances(self) -> AccountBalance:
+        """Return account cash/equity balances."""
+        data = await self._get(f"/accounts/{self._account_id}/balances")
+        b = data["balances"]
+        return AccountBalance(
+            account_value=float(b.get("total_equity") or b.get("net_value") or 0),
+            cash=float(b.get("total_cash") or b.get("cash") or 0),
+            buying_power=float(b.get("buying_power") or 0),
+            option_buying_power=float(b.get("option_buying_power") or b.get("buying_power") or 0),
+        )
+
+    # ------------------------------------------------------------------
+    # Order management
+    # ------------------------------------------------------------------
+
+    async def place_option_order(
+        self,
+        option_symbol: str,
+        side: str,          # "buy_to_open" | "sell_to_close" | "buy_to_close" | "sell_to_open"
+        quantity: int,
+        order_type: str = "market",
+        limit_price: Optional[float] = None,
+        duration: str = "day",
+    ) -> OrderResult:
+        """Place a single-leg option order."""
+        payload: dict = {
+            "class": "option",
+            "symbol": option_symbol.split()[0] if " " in option_symbol else option_symbol[:6],
+            "option_symbol": option_symbol,
+            "side": side,
+            "quantity": str(quantity),
+            "type": order_type,
+            "duration": duration,
+        }
+        if order_type == "limit" and limit_price is not None:
+            payload["price"] = str(round(limit_price, 2))
+
+        data = await self._post(f"/accounts/{self._account_id}/orders", payload)
+        order = data.get("order", {})
+        return OrderResult(
+            order_id=str(order.get("id", "")),
+            status=order.get("status", "unknown"),
+            raw=data,
+        )
+
+    # ------------------------------------------------------------------
+    # Layer 6 helpers
+    # ------------------------------------------------------------------
+
+    def get_atm_iv(
+        self,
+        chain: list[OptionQuote],
+        direction: str,
+        current_price: float,
+    ) -> Optional[float]:
+        """
+        Return the mid-IV of the ATM option for the given direction.
+        Finds the contract whose strike is closest to current_price.
+        Returns None if chain is empty or IV data is unavailable.
+
+        Used by Layer 6 (IV filter) in the scheduler.
+        """
+        side_chain = [o for o in chain if o.option_type == direction.lower()]
+        if not side_chain:
+            return None
+        atm = min(side_chain, key=lambda o: abs(o.strike - current_price))
+        return atm.iv if (atm.iv is not None and atm.iv > 0) else None
+
+    async def is_earnings_window(self, symbol: str, days_before: int = 2) -> bool:
+        """
+        Return True if the symbol has an earnings event within the next
+        `days_before` calendar days (inclusive of today).
+
+        Uses Tradier's /markets/fundamentals/calendars endpoint.
+        Falls back to False on any error so the sandbox never accidentally
+        blocks entries due to missing calendar data.
+        """
+        from datetime import date, timedelta as td
+        try:
+            data = await self._get(
+                "/markets/fundamentals/calendars", {"symbols": symbol}
+            )
+            # Response shape: {"items": {"results": [{...}, ...]}}
+            results = data.get("items", {}).get("results", [])
+            if isinstance(results, dict):
+                results = [results]
+
+            today   = date.today()
+            cutoff  = today + td(days=days_before)
+
+            for item in results:
+                events = item.get("tables", {}).get("corporate_calendars", [])
+                if isinstance(events, dict):
+                    events = [events]
+                for ev in events:
+                    ev_type = (ev.get("event") or "").lower()
+                    if ev_type not in ("eps", "earnings"):
+                        continue
+                    date_str = ev.get("begin_date_time", "")
+                    if not date_str:
+                        continue
+                    ev_date = date.fromisoformat(date_str[:10])
+                    if today <= ev_date <= cutoff:
+                        logger.info(
+                            "%s earnings on %s — within %d-day blackout window",
+                            symbol, ev_date, days_before,
+                        )
+                        return True
+        except Exception as exc:
+            logger.debug(
+                "is_earnings_window(%s) failed: %s — skipping blackout check",
+                symbol, exc,
+            )
+        return False
+
+    async def cancel_order(self, order_id: str) -> dict:
+        """Cancel a pending order."""
+        return await self._delete(f"/accounts/{self._account_id}/orders/{order_id}")
+
+    async def get_order_status(self, order_id: str) -> dict:
+        """Return raw order status dict."""
+        data = await self._get(f"/accounts/{self._account_id}/orders/{order_id}")
+        return data.get("order", data)
+
+
+# ---------------------------------------------------------------------------
+# Module-level singleton (lazy, re-created if token changes)
+# ---------------------------------------------------------------------------
+
+_client: Optional[TradierClient] = None
+
+
+def get_tradier_client() -> TradierClient:
+    global _client
+    if _client is None:
+        _client = TradierClient()
+    return _client

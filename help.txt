@@ -1,0 +1,52 @@
+bash run.sh
+====
+Recon Script -
+
+# Run this to find orphan trades
+curl -s http://localhost:8000/api/trades/live | python3 -m json.tool
+
+
+# Replace "2" with ID & -d '{"exit_price": 2.58}'
+curl -s -X POST http://localhost:8000/api/trades/30/mark-closed \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+
+===
+Layer 1 is the dominant bottleneck — and it's invisible
+The VWAP band check at the end of L1 has no log line at all — it just returns None. Out of 560 scans, only 15 generated a loggable L1 signal. The rest died quietly for one of these reasons (all DEBUG or silent):
+
+Price too far from VWAP (silent return None) ← the main culprit
+EMA = "neutral" (silent)
+EMA consecutive bars not confirmed (DEBUG)
+EMA slope decelerating (DEBUG)
+Intraday session bias (DEBUG)
+Price on wrong VWAP side (DEBUG)
+
+The VWAP_BAND_PCT=0.0075 means price must be within 0.75% of VWAP. On a trending day like today, most stocks are either well above or well below VWAP for long stretches — within 0.75% is a narrow window that only opens briefly.
+
+Layer 3 is the second bottleneck
+L3 requires a 1-min candle that is simultaneously green (close > open) AND rising (close > prev close). Both conditions must be true. This is a strict double requirement — a flat or mildly red candle kills an otherwise valid setup even when the stock is clearly trending. 9 out of 15 signals got killed here.
+
+Where to focus, in order of impact:
+1. VWAP band — highest leverage, safest change
+Going back from 0.75% toward the old 0.01 (1.0%) would roughly 2× the L1 pass rate. The setup quality doesn't meaningfully degrade — you're still requiring a VWAP pullback, just with a slightly more forgiving window. On a $200 stock, 0.75% is ±$1.50; 1.0% is ±$2.00. Either is still a "near VWAP" entry.
+2. L3 momentum — second highest impact
+Drop the double requirement: keep "rising close > prev close" but remove the "green candle (close > open)" requirement. A 1-min bar can be slightly red (close just below open) while still closing higher than the previous bar — that's still upward momentum. The current logic sometimes fires one scan cycle late, after the momentum candle has already passed, which means missed entries.
+3. Leave L5 alone
+The regime gate is working correctly. MRVL and SOFI CALL signals while SPY was bearish should be blocked — those would likely have been bad trades today.
+4. L4/L6 are not the problem
+Zero blocks today. They're not overfitting or over-filtering — they're simply not being triggered.
+Summary: VWAP band is the invisible 97% filter. Loosen that first and watch how many more L1 signals start appearing in the log. Then reassess L3.
+
+====== TO ENABLE BORKER STOP ===
+
+python# if settings.broker_stop_enabled:
+#     await _place_broker_stop(db, client, trade)
+This is what actually sends the resting stop order to Tradier right after a trade opens.
+Block 2 — line 860-862 (top of the manage loop, runs every 30 seconds):
+python# if trade.stop_order_id:
+#     if await _reconcile_broker_stop(db, client, trade):
+#         continue
+This is what checks every tick whether Tradier's stop order already filled independently of the bot.
+To re-enable: remove the # from those 5 lines and set BROKER_STOP_ENABLED=1 in .env.
