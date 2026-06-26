@@ -171,7 +171,6 @@ function ajoy() {
           { key: 's2_max_open_trades', label: 'Max Open Trades',       hint: 'Max concurrent S2 positions',                               type: 'number', step: 1 },
           { key: 's2_ema_fast',        label: 'EMA Fast Period',       hint: '1-min and 5-min fast EMA (default 9)',                      type: 'number', step: 1 },
           { key: 's2_ema_slow',        label: 'EMA Slow Period',       hint: '1-min and 5-min slow EMA (default 21)',                     type: 'number', step: 1 },
-          { key: 's2_ema_trend',       label: 'Trend EMA Period',      hint: '5-min trend filter EMA — price must be above/below this (default 200)', type: 'number', step: 1 },
           { key: 's2_volume_confirm',  label: 'Volume Confirm',        hint: 'Require trigger bar volume > previous bar volume',           type: 'bool' },
           { key: 's2_cooldown_minutes',label: 'Cooldown (min)',        hint: 'Re-entry wait after stop or EMA cross exit on this symbol', type: 'number', step: 1 },
         ],

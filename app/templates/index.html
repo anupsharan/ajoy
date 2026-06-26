@@ -134,9 +134,9 @@
         Strategy 2 — EMA Crossover
       </div>
       <p class="text-xs text-muted leading-relaxed">
-        <strong>Entry:</strong> 5-min trend filter (Price vs EMA200, EMA9 vs EMA21) + 1-min EMA9 crosses EMA21 with volume confirm.<br>
+        <strong>Entry:</strong> 5-min trend filter (EMA9 vs EMA21) + 1-min EMA9 crosses EMA21 with candle color confirm.<br>
         <strong>Exit:</strong> Opposite EMA cross on 1-min — no fixed take profit. Hard stop −10%; breakeven at +10%; trail 5% from +20%.<br>
-        <strong>Note:</strong> Enable S2 in <em>Settings → S2 – EMA Cross: Core</em> before the scanner will scan these symbols.
+        <strong>Note:</strong> Use the settings panels below to configure and enable S2.
       </p>
     </div>
 
@@ -931,7 +931,7 @@
       </p>
     </div>
 
-    <template x-for="group in configGroups" :key="group.id">
+    <template x-for="group in configGroups.filter(g => !g.id.startsWith('s2_'))" :key="group.id">
       <div class="card mb-4" style="overflow:visible;">
 
         <!-- Group header -->

@@ -3,22 +3,21 @@ Strategy 2 — EMA Crossover entry and exit logic.
 
 Entry rules
 -----------
-  5-min trend filter  (per-ticker, completed bars only):
-    CALL : close > EMA(200) AND EMA(9) > EMA(21)
-    PUT  : close < EMA(200) AND EMA(9) < EMA(21)
+  5-min EMA cross trigger (last two completed 5-min bars):
+    CALL : previous bar had EMA(9) ≤ EMA(21), trigger bar has EMA(9) > EMA(21)
+           AND trigger bar closes green (close > open)
+    PUT  : previous bar had EMA(9) ≥ EMA(21), trigger bar has EMA(9) < EMA(21)
+           AND trigger bar closes red  (close < open)
 
-  1-min trigger (last two completed bars):
-    CALL : previous bar had EMA9 ≤ EMA21, trigger bar has EMA9 > EMA21
-           AND trigger bar volume > previous bar volume
-    PUT  : previous bar had EMA9 ≥ EMA21, trigger bar has EMA9 < EMA21
-           AND trigger bar volume > previous bar volume
+  Note: The cross detection implies trend alignment — no separate trend filter needed.
+        Volume gate removed (5-min bars are less noisy than 1-min).
 
 Exit rules
 ----------
-  Opposite EMA cross  : EMA(fast) crosses back through EMA(slow) on 1-min
-  Hard stop           : option price drops ≥ S2_STOP_LOSS_PCT (−10%)
-  Breakeven           : option price +S2_BREAKEVEN_PCT (+10%) → stop → entry
-  Trailing            : option price +S2_TRAIL_PCT (+20%) → trail S2_TRAIL_FROM_CURRENT_PCT (5%)
+  Opposite EMA cross  : EMA(fast) crosses back through EMA(slow) on 5-min
+  Hard stop           : option price drops ≥ S2_STOP_LOSS_PCT
+  Breakeven           : option price +S2_BREAKEVEN_PCT → stop → entry
+  Trailing            : option price +S2_TRAIL_PCT → trail S2_TRAIL_FROM_CURRENT_PCT below current
 """
 from __future__ import annotations
 
@@ -80,46 +79,39 @@ def check_5min_trend_filter(bars_5m: list[Bar], direction: str) -> bool:
     """
     Return True if the 5-min trend aligns with `direction`.
 
-    CALL : last closed bar's close > EMA(200)  AND  EMA(9) > EMA(21)
-    PUT  : last closed bar's close < EMA(200)  AND  EMA(9) < EMA(21)
+    CALL : EMA(9) > EMA(21) on 5-min
+    PUT  : EMA(9) < EMA(21) on 5-min
 
-    Returns False (and logs the reason) if the filter fails.
-    Falls back to True only when there is genuinely not enough history for
-    EMA(200) — we skip rather than block on data gaps.
+    The EMA(200) price gate was removed — it's a 2.5-day lagging average that
+    reliably blocks valid opening-range signals without adding directional value.
+    The EMA(9) vs EMA(21) spread is sufficient to confirm trend alignment.
+
+    Falls back to True only when there is genuinely not enough history —
+    we skip rather than block on data gaps.
     """
     bars = completed_bars(bars_5m, interval_minutes=5)
 
-    ema_fast   = settings.s2_ema_fast    # 9
-    ema_slow   = settings.s2_ema_slow    # 21
-    ema_trend  = settings.s2_ema_trend   # 200
+    ema_fast = settings.s2_ema_fast    # 9
+    ema_slow = settings.s2_ema_slow    # 21
 
-    if len(bars) < ema_trend + 1:
+    if len(bars) < ema_slow + 1:
         logger.debug(
             "[S2-5m-filter] Not enough 5-min bars (%d) for EMA(%d) — filter skipped (pass-through)",
-            len(bars), ema_trend,
+            len(bars), ema_slow,
         )
         return True   # don't block on data scarcity; S2 entry still requires the 1-min trigger
 
     closes = [b.close for b in bars]
-    last_close = closes[-1]
 
-    ema_fast_val  = _last_ema(closes, ema_fast)
-    ema_slow_val  = _last_ema(closes, ema_slow)
-    ema_trend_val = _last_ema(closes, ema_trend)
+    ema_fast_val = _last_ema(closes, ema_fast)
+    ema_slow_val = _last_ema(closes, ema_slow)
 
-    if ema_fast_val is None or ema_slow_val is None or ema_trend_val is None:
-        logger.debug("[S2-5m-filter] Could not compute one or more EMAs — filter skipped")
+    if ema_fast_val is None or ema_slow_val is None:
+        logger.debug("[S2-5m-filter] Could not compute EMAs — filter skipped")
         return True
 
     if direction == "CALL":
-        price_ok  = last_close > ema_trend_val
         spread_ok = ema_fast_val > ema_slow_val
-        if not price_ok:
-            logger.info(
-                "[S2-5m-filter] CALL blocked — close %.2f ≤ EMA(%d)=%.2f on 5-min",
-                last_close, ema_trend, ema_trend_val,
-            )
-            return False
         if not spread_ok:
             logger.info(
                 "[S2-5m-filter] CALL blocked — EMA(%d)=%.4f ≤ EMA(%d)=%.4f on 5-min (downtrend)",
@@ -127,20 +119,13 @@ def check_5min_trend_filter(bars_5m: list[Bar], direction: str) -> bool:
             )
             return False
         logger.debug(
-            "[S2-5m-filter] CALL OK — close=%.2f > EMA%d=%.2f | EMA%d=%.4f > EMA%d=%.4f",
-            last_close, ema_trend, ema_trend_val, ema_fast, ema_fast_val, ema_slow, ema_slow_val,
+            "[S2-5m-filter] CALL OK — EMA%d=%.4f > EMA%d=%.4f on 5-min",
+            ema_fast, ema_fast_val, ema_slow, ema_slow_val,
         )
         return True
 
     else:  # PUT
-        price_ok  = last_close < ema_trend_val
         spread_ok = ema_fast_val < ema_slow_val
-        if not price_ok:
-            logger.info(
-                "[S2-5m-filter] PUT blocked — close %.2f ≥ EMA(%d)=%.2f on 5-min",
-                last_close, ema_trend, ema_trend_val,
-            )
-            return False
         if not spread_ok:
             logger.info(
                 "[S2-5m-filter] PUT blocked — EMA(%d)=%.4f ≥ EMA(%d)=%.4f on 5-min (uptrend)",
@@ -148,8 +133,8 @@ def check_5min_trend_filter(bars_5m: list[Bar], direction: str) -> bool:
             )
             return False
         logger.debug(
-            "[S2-5m-filter] PUT OK — close=%.2f < EMA%d=%.2f | EMA%d=%.4f < EMA%d=%.4f",
-            last_close, ema_trend, ema_trend_val, ema_fast, ema_fast_val, ema_slow, ema_slow_val,
+            "[S2-5m-filter] PUT OK — EMA%d=%.4f < EMA%d=%.4f on 5-min",
+            ema_fast, ema_fast_val, ema_slow, ema_slow_val,
         )
         return True
 
@@ -250,11 +235,92 @@ def check_1min_ema_cross(bars_1m: list[Bar], direction: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# 3. S2 exit conditions
+# 3. 5-min EMA crossover trigger (entry + exit signal)
+# ---------------------------------------------------------------------------
+
+def check_5min_ema_cross(bars_5m: list[Bar], direction: str) -> bool:
+    """
+    Return True if the most recently completed 5-min bar shows a fresh EMA cross.
+
+    CALL : previous bar EMA(fast) ≤ EMA(slow) → trigger bar EMA(fast) > EMA(slow)
+           AND trigger bar is green (close > open)
+    PUT  : previous bar EMA(fast) ≥ EMA(slow) → trigger bar EMA(fast) < EMA(slow)
+           AND trigger bar is red  (close < open)
+
+    Uses completed 5-min bars with multi-day lookback so EMA values are stable
+    from market open.  No volume gate — 5-min bar volume is less noisy than 1-min.
+    The cross itself implies trend alignment, so no separate trend filter is needed.
+    """
+    bars = completed_bars(bars_5m, interval_minutes=5)
+
+    ema_fast = settings.s2_ema_fast   # 9
+    ema_slow = settings.s2_ema_slow   # 21
+    min_bars = ema_slow + 2           # need at least slow_period + 1 completed bars
+
+    if len(bars) < min_bars:
+        logger.debug(
+            "[S2-5m-cross] Not enough 5-min bars (%d, need %d)",
+            len(bars), min_bars,
+        )
+        return False
+
+    closes = [b.close for b in bars]
+
+    fast_prev, fast_now = _last_two_emas(closes, ema_fast)
+    slow_prev, slow_now = _last_two_emas(closes, ema_slow)
+
+    if any(v is None for v in (fast_prev, fast_now, slow_prev, slow_now)):
+        logger.debug("[S2-5m-cross] Could not compute EMAs — no cross detected")
+        return False
+
+    if direction == "CALL":
+        crossed = (fast_prev <= slow_prev) and (fast_now > slow_now)
+        if not crossed:
+            logger.debug(
+                "[S2-5m-cross] No bullish cross — EMA%d prev=%.4f now=%.4f | EMA%d prev=%.4f now=%.4f",
+                ema_fast, fast_prev, fast_now, ema_slow, slow_prev, slow_now,
+            )
+            return False
+    else:  # PUT
+        crossed = (fast_prev >= slow_prev) and (fast_now < slow_now)
+        if not crossed:
+            logger.debug(
+                "[S2-5m-cross] No bearish cross — EMA%d prev=%.4f now=%.4f | EMA%d prev=%.4f now=%.4f",
+                ema_fast, fast_prev, fast_now, ema_slow, slow_prev, slow_now,
+            )
+            return False
+
+    # Candle color confirmation — cross bar must close in the direction of the trade.
+    trigger_bar = bars[-1]
+    if direction == "CALL" and trigger_bar.close <= trigger_bar.open:
+        logger.info(
+            "[S2-5m-cross] CALL cross found but trigger bar is red/doji "
+            "(open=%.2f close=%.2f) — not a bullish confirmation candle",
+            trigger_bar.open, trigger_bar.close,
+        )
+        return False
+    if direction == "PUT" and trigger_bar.close >= trigger_bar.open:
+        logger.info(
+            "[S2-5m-cross] PUT cross found but trigger bar is green/doji "
+            "(open=%.2f close=%.2f) — not a bearish confirmation candle",
+            trigger_bar.open, trigger_bar.close,
+        )
+        return False
+
+    logger.info(
+        "[S2-5m-cross] ✓ %s cross confirmed on 5-min — EMA%d crossed EMA%d | candle %s",
+        direction, ema_fast, ema_slow,
+        "green" if direction == "CALL" else "red",
+    )
+    return True
+
+
+# ---------------------------------------------------------------------------
+# 4. S2 exit conditions
 # ---------------------------------------------------------------------------
 
 def check_s2_exit_conditions(
-    bars_1m: list[Bar],
+    bars: list[Bar],
     direction: str,
     entry_price: float,
     current_price: float,
@@ -262,6 +328,7 @@ def check_s2_exit_conditions(
     be_stop_set: bool,
     entry_time: Optional[datetime] = None,
     now: Optional[datetime] = None,
+    interval_minutes: int = 5,
 ) -> Optional[S2ExitCondition]:
     """
     Evaluate S2 exit conditions in priority order:
@@ -324,7 +391,7 @@ def check_s2_exit_conditions(
 
     # ── 3. Opposite EMA cross (signal exit) ──────────────────────────────────
     opposite = "PUT" if direction == "CALL" else "CALL"
-    if _check_ema_cross_signal(bars_1m, opposite):
+    if _check_ema_cross_signal(bars, opposite, interval_minutes=interval_minutes):
         logger.info(
             "[S2-exit] EMA_CROSS — opposite %s cross detected → exiting %s position",
             opposite, direction,
@@ -339,12 +406,13 @@ def check_s2_exit_conditions(
 # (exit cross doesn't need volume confirm — speed of exit matters)
 # ---------------------------------------------------------------------------
 
-def _check_ema_cross_signal(bars_1m: list[Bar], direction: str) -> bool:
+def _check_ema_cross_signal(bars_in: list[Bar], direction: str, interval_minutes: int = 5) -> bool:
     """
-    Like check_1min_ema_cross but for EXIT detection — no volume gate.
+    Exit-side EMA cross detector — no volume gate, no candle color gate.
     direction here is the *opposite* of the trade direction.
+    Works on any bar interval; defaults to 5-min.
     """
-    bars = completed_bars(bars_1m, interval_minutes=1)
+    bars = completed_bars(bars_in, interval_minutes=interval_minutes)
 
     ema_fast = settings.s2_ema_fast
     ema_slow = settings.s2_ema_slow

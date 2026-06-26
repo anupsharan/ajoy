@@ -575,10 +575,10 @@ async def update_trade_levels(
         stop = round(payload.stop_price, 2)
         if stop <= 0:
             raise HTTPException(status_code=422, detail="stop_price must be > 0")
-        if stop >= entry:
+        if stop > entry:
             raise HTTPException(
                 status_code=422,
-                detail=f"stop_price ${stop:.2f} must be below entry ${entry:.2f}",
+                detail=f"stop_price ${stop:.2f} must be at or below entry ${entry:.2f}",
             )
     else:
         stop = None
