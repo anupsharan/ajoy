@@ -149,6 +149,7 @@ class Trade(Base):
     # Order / execution details
     tradier_order_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     stop_order_id: Mapped[str | None] = mapped_column(String(50), nullable=True)  # broker-side resting stop order
+    tp_order_id:   Mapped[str | None] = mapped_column(String(50), nullable=True)  # broker-side resting TP limit order
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     entry_price: Mapped[float] = mapped_column(Float, nullable=False)
     entry_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     # position at the stop.  The bot raises this order when the trailing
     # stop moves, and cancels it before any bot-initiated exit.
     broker_stop_enabled: bool = True
+    broker_tp_enabled:   bool = False    # place a resting limit sell at TP price; update when target changes
 
     # ── Risk / reward levels ─────────────────────────────────────
     # Simple percentage-based exits: close 100 % at profit target or stop.
@@ -160,6 +161,7 @@ class Settings(BaseSettings):
     # ── Pre-entry guards ──────────────────────────────────────────
     cooldown_minutes: int = 60           # re-entry cooldown after STOP/VWAP_BREAK
     tp_cooldown_minutes: int = 30        # re-entry cooldown after TP1 or TP2 exit
+    tp_chase_pct: float = 0.15          # block same-direction re-entry if new price > last TP entry × (1 + this)
     max_losses_per_symbol_per_day: int = 2  # max losing trades per symbol per day
     max_trades_per_symbol_per_day: int = 2  # max total entries per symbol per day (wins+losses)
     #                                       # forces diversification — prevents the same 3 symbols

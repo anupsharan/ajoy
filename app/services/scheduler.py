@@ -229,6 +229,34 @@ async def _get_recent_tp_exit(db, ticker: str) -> Trade | None:
     return result.scalar_one_or_none()
 
 
+async def _get_tp_exit_for_chase_check(db, ticker: str) -> Trade | None:
+    """
+    Return the most recent TP1/TP2/TRAILING_STOP exit for this symbol today,
+    used to enforce the same-direction price-chase guard.
+
+    Unlike _get_recent_tp_exit (which uses a rolling 30-min window), this
+    looks at the full trading session so that a trade entered 90 min after a
+    TP is still blocked if it's chasing the same extended move.
+    """
+    today_start = datetime.combine(date.today(), datetime.min.time()).replace(
+        tzinfo=timezone.utc
+    )
+    result = await db.execute(
+        select(Trade)
+        .where(
+            Trade.symbol == ticker,
+            Trade.status == TradeStatus.CLOSED,
+            Trade.exit_reason.in_(
+                [ExitReason.TP1, ExitReason.TP2, ExitReason.TRAILING_STOP]
+            ),
+            Trade.exit_time >= today_start,
+        )
+        .order_by(Trade.exit_time.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 async def _get_s2_recent_bad_exit(db, ticker: str) -> Trade | None:
     """
     S2 cooldown: return the most recent STOP or EMA_CROSS exit on this symbol
@@ -626,6 +654,30 @@ async def _attempt_entry(
         order_price    = ask_price
         order_type_str = "market"
 
+    # ── G_chase: TP price-chase guard ────────────────────────────────────────
+    # If this symbol had a profitable TP exit today in the same direction,
+    # block re-entry when the new option price is significantly higher than
+    # the previous entry price.  Prevents chasing a move that has already
+    # played out (e.g. SOFI PUT $0.17 → TP2 → re-enter PUT at $0.36 = +112%).
+    # Different direction is always allowed (fresh setup, no chase concern).
+    if settings.tp_chase_pct > 0:
+        tp_chase_trade = await _get_tp_exit_for_chase_check(db, ticker)
+        if (
+            tp_chase_trade
+            and tp_chase_trade.direction.value == direction
+            and tp_chase_trade.entry_price > 0
+        ):
+            price_ratio = order_price / tp_chase_trade.entry_price
+            if price_ratio > (1 + settings.tp_chase_pct):
+                logger.info(
+                    "[%s] TP chase guard — %s new entry $%.2f is %.0f%% above last TP "
+                    "entry $%.2f (max %.0f%%) — chasing an extended move, skipping",
+                    ticker, direction,
+                    order_price, (price_ratio - 1) * 100,
+                    tp_chase_trade.entry_price, settings.tp_chase_pct * 100,
+                )
+                return
+
     cost_per_contract = order_price * 100
     if cost_per_contract <= 0:
         return
@@ -820,6 +872,10 @@ async def _attempt_entry(
     #
     # if settings.broker_stop_enabled:
     #     await _place_broker_stop(db, client, trade)
+
+    # ── Broker-side resting TP limit order ───────────────────────────────
+    if settings.broker_tp_enabled:
+        await _place_broker_tp(db, client, trade)
 
 
 # ---------------------------------------------------------------------------
@@ -1151,6 +1207,41 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
     )
 
 
+async def _place_broker_tp(db, client, trade: Trade) -> None:
+    """Place a resting sell-to-close limit order at the TP price and record its id."""
+    tp_price = trade.tp1_price or trade.tp2_price
+    if not tp_price:
+        logger.warning("[%s] Trade %d has no TP price — cannot place broker TP order", trade.symbol, trade.id)
+        return
+    try:
+        tp_order = await client.place_option_order(
+            option_symbol=trade.option_symbol,
+            side="sell_to_close",
+            quantity=trade.remaining_qty or trade.quantity,
+            order_type="limit",
+            limit_price=tp_price,
+        )
+        if tp_order.order_id:
+            trade.tp_order_id = tp_order.order_id
+            await db.commit()
+            logger.info(
+                "[%s] Broker TP placed: order %s @ $%.2f",
+                trade.symbol, tp_order.order_id, tp_price,
+            )
+        else:
+            logger.error(
+                "[%s] Broker TP order returned no order_id (raw=%s) — "
+                "bot-side TP remains the only protection for trade %d",
+                trade.symbol, tp_order.raw, trade.id,
+            )
+    except Exception as exc:
+        logger.error(
+            "[%s] Failed to place broker TP for trade %d: %s — "
+            "bot-side TP remains active",
+            trade.symbol, trade.id, exc,
+        )
+
+
 async def _place_broker_stop(db, client, trade: Trade) -> None:
     """Place a resting sell-to-close stop order at the broker and record its id."""
     try:
@@ -1211,6 +1302,14 @@ async def manage_open_trades() -> None:
                 # if trade.stop_order_id:
                 #     if await _reconcile_broker_stop(db, client, trade):
                 #         continue
+
+                # ── Broker-TP reconciliation ─────────────────────────────────
+                # If the broker filled our resting TP limit order (e.g. while
+                # the bot's bid-price check missed it due to spread timing),
+                # detect and record the close here before doing anything else.
+                if trade.tp_order_id and settings.broker_tp_enabled:
+                    if await _reconcile_broker_tp(db, client, trade):
+                        continue
 
                 # ── Strategy 2 (EMA cross) management ───────────────────────
                 if trade.strategy_name == "ema_cross":
@@ -1291,16 +1390,8 @@ async def manage_open_trades() -> None:
                                     trade.symbol, trade.stop_order_id, new_stop, exc,
                                 )
 
-                # Current underlying + 15-min bars.
-                # Same lookback as entry so the exit-side EMA(21) sees the same
-                # history as the entry-side EMA — previously the default
-                # lookback_days=1 made entry and exit evaluate different trends.
+                # Current underlying price (needed for VWAP_BREAK check).
                 underlying_q = await client.get_quote(trade.symbol)
-                bars_15m     = await client.get_intraday_bars(
-                    trade.symbol, interval="15min",
-                    lookback_days=settings.trend_lookback_days,
-                )
-                bars_15m = completed_bars(bars_15m, 15)  # drop in-progress bar
 
                 exit_cond = check_exit_conditions(
                     direction=trade.direction.value,
@@ -1313,7 +1404,6 @@ async def manage_open_trades() -> None:
                     tp1_hit=trade.tp1_hit,
                     vwap_at_entry=trade.vwap_at_entry or 0,
                     current_underlying=underlying_q.last,
-                    bars_15m=bars_15m,
                     remaining_qty=trade.remaining_qty or trade.quantity,
                     entry_time=trade.entry_time,
                 )
@@ -1568,6 +1658,55 @@ async def _reconcile_broker_stop(db, client, trade: Trade) -> bool:
     return False
 
 
+async def _reconcile_broker_tp(db, client, trade: Trade) -> bool:
+    """
+    Check whether the broker-side resting TP limit order has filled.
+
+    filled                       → close the DB trade as TP2, return True
+    canceled/rejected/expired    → clear tp_order_id (loudly), return False
+    open/pending/anything else   → return False (no action)
+    """
+    try:
+        status_data = await client.get_order_status(trade.tp_order_id)
+        status_str  = (status_data.get("status") or "").lower()
+    except Exception as exc:
+        logger.warning(
+            "[%s] Trade %d: could not check broker TP %s: %s",
+            trade.symbol, trade.id, trade.tp_order_id, exc,
+        )
+        return False
+
+    if status_str == "filled":
+        fill_price = await client.get_fill_price(trade.tp_order_id)
+        exit_price = fill_price or trade.tp1_price or trade.tp2_price or trade.entry_price
+        qty = trade.remaining_qty or trade.quantity
+        trade.status      = TradeStatus.CLOSED
+        trade.exit_price  = round(exit_price, 2)
+        trade.exit_time   = datetime.now(tz=timezone.utc)
+        trade.exit_reason = ExitReason.TP2
+        trade.pnl         = round(
+            (trade.pnl or 0) + (trade.exit_price - trade.entry_price) * qty * 100, 2
+        )
+        trade.tp_order_id = None
+        await db.commit()
+        logger.info(
+            "[%s] Trade %d CLOSED via broker-side TP @ $%.2f  PnL=$%.2f",
+            trade.symbol, trade.id, trade.exit_price, trade.pnl,
+        )
+        return True
+
+    if status_str in ("canceled", "cancelled", "rejected", "expired"):
+        logger.warning(
+            "[%s] Trade %d: broker TP %s is %s — clearing it. "
+            "Bot-side TP check is now the only exit for this position.",
+            trade.symbol, trade.id, trade.tp_order_id, status_str.upper(),
+        )
+        trade.tp_order_id = None
+        await db.commit()
+
+    return False
+
+
 async def _close_trade(
     db,
     client,
@@ -1630,6 +1769,43 @@ async def _close_trade(
             )
             return False
         trade.stop_order_id = None
+        await db.commit()
+
+    # ── Step 0b: cancel broker-side TP limit order (if any) ─────────────────
+    # Must cancel before placing the bot exit sell — two resting sell orders
+    # on the same position risks a double-sell rejection.
+    if trade.tp_order_id:
+        try:
+            await client.cancel_order(trade.tp_order_id)
+        except Exception as exc:
+            logger.warning(
+                "[%s] Trade %d: cancel of broker TP %s failed: %s",
+                trade.symbol, trade.id, trade.tp_order_id, exc,
+            )
+        try:
+            tp_st_data = await client.get_order_status(trade.tp_order_id)
+            tp_st_str  = (tp_st_data.get("status") or "").lower()
+        except Exception:
+            tp_st_str = "unknown"
+        if tp_st_str == "filled":
+            # TP order won the race — position already flat, record as TP2 exit.
+            logger.info(
+                "[%s] Trade %d: broker TP filled during cancel window — "
+                "recording TP exit instead of %s",
+                trade.symbol, trade.id, reason.value,
+            )
+            fill_price = await client.get_fill_price(trade.tp_order_id)
+            trade.exit_price  = fill_price or trade.tp1_price or trade.tp2_price
+            trade.exit_time   = datetime.now(tz=timezone.utc)
+            trade.exit_reason = ExitReason.TP2
+            trade.status      = TradeStatus.CLOSED
+            trade.pnl         = round(
+                (trade.exit_price - trade.entry_price) * (trade.remaining_qty or trade.quantity) * 100, 2
+            )
+            trade.tp_order_id = None
+            await db.commit()
+            return True
+        trade.tp_order_id = None
         await db.commit()
 
     # ── Step 1: place the sell order ────────────────────────────────────────

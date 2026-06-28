@@ -642,10 +642,55 @@ async def update_trade_levels(
                     trade.symbol, trade.id, stop, exc2,
                 )
 
+    # ── Update broker-side TP limit order (if TP changed) ────────────────
+    if tp is not None and _cfg.broker_tp_enabled:
+        tp_client = get_tradier_client()
+        # Cancel the existing TP order first (if any)
+        if trade.tp_order_id:
+            try:
+                await tp_client.cancel_order(trade.tp_order_id)
+                _enrich_logger.info(
+                    "[%s] Trade %d: cancelled old broker TP order %s",
+                    trade.symbol, trade.id, trade.tp_order_id,
+                )
+            except Exception as exc:
+                _enrich_logger.warning(
+                    "[%s] Trade %d: failed to cancel old broker TP %s: %s",
+                    trade.symbol, trade.id, trade.tp_order_id, exc,
+                )
+            trade.tp_order_id = None
+
+        # Place a fresh TP limit order at the new price
+        try:
+            new_tp_order = await tp_client.place_option_order(
+                option_symbol=trade.option_symbol,
+                side="sell_to_close",
+                quantity=trade.remaining_qty or trade.quantity,
+                order_type="limit",
+                limit_price=tp,
+            )
+            if new_tp_order.order_id:
+                trade.tp_order_id = new_tp_order.order_id
+                _enrich_logger.info(
+                    "[%s] Trade %d: new broker TP placed: order %s @ $%.2f",
+                    trade.symbol, trade.id, new_tp_order.order_id, tp,
+                )
+            else:
+                _enrich_logger.error(
+                    "[%s] Trade %d: broker TP replace returned no order_id",
+                    trade.symbol, trade.id,
+                )
+        except Exception as exc:
+            _enrich_logger.error(
+                "[%s] Trade %d: failed to place new broker TP at $%.2f: %s",
+                trade.symbol, trade.id, tp, exc,
+            )
+
     # ── Persist DB changes ────────────────────────────────────────────────
     if stop is not None:
         trade.stop_price = stop
     if tp is not None:
+        trade.tp1_price = tp   # keep tp1 in sync (v1: both are the same target)
         trade.tp2_price = tp
 
     _enrich_logger.info(

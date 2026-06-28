@@ -89,6 +89,7 @@ function ajoy() {
           { key: 'stop_loss_pct',    label: 'Stop Loss (decimal)',  hint: '0.27 = -27% from entry',          type: 'number', step: 0.01 },
           { key: 'take_profit_pct',  label: 'Take Profit (decimal)',hint: '0.35 = +35% from entry',          type: 'number', step: 0.01 },
           { key: 'broker_stop_enabled', label: 'Broker-Side Stop',  hint: 'Resting stop order at Tradier — protects position if bot goes down', type: 'bool' },
+          { key: 'broker_tp_enabled',   label: 'Broker-Side TP',    hint: 'Resting limit sell at TP price — auto-fills at target even if bot is down; updating Target in Open Positions also updates this order', type: 'bool' },
         ],
       },
       {

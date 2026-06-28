@@ -57,6 +57,9 @@ async def _migrate(conn) -> None:
         "DROP INDEX ix_symbols_ticker",
         # Recreate as a plain (non-unique) index — ticker lookups stay fast.
         "CREATE INDEX IF NOT EXISTS ix_symbols_ticker ON symbols (ticker)",
+
+        # v6 → v7: broker-side resting TP limit order id
+        "ALTER TABLE trades ADD COLUMN tp_order_id VARCHAR(50)",
     ]
     for stmt in migrations:
         try:

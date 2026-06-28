@@ -734,7 +734,6 @@ def check_exit_conditions(
     tp1_hit: bool,
     vwap_at_entry: float,
     current_underlying: float,
-    bars_15m: list[Bar],
     remaining_qty: int,
     entry_time: Optional[datetime] = None,
     now: Optional[datetime] = None,
@@ -851,64 +850,6 @@ def check_exit_conditions(
                 vwap_at_entry, exit_band * 100,
             )
             return ExitCondition(reason="VWAP_BREAK", close_all=True)
-
-    # 5. Trend reversal (15-min EMA flips against trade direction)
-    #
-    #    Guard A — minimum hold time (TREND_REVERSAL_MIN_HOLD_MINUTES, default 10 min):
-    #      Suppressed only while the trade is PROFITABLE within the hold window.
-    #      If the option is already at a loss, reversal can fire immediately.
-    #      This prevents whipsaw exits on entries that tick up before settling.
-    #
-    #    Guard B — consecutive-bar confirmation (TREND_REVERSAL_CONFIRM_BARS, default 1):
-    #      Now 1 bar (down from 2).  With the EMA alignment gate at entry
-    #      (requiring EMA9 > EMA21 for CALLs), we enter into double-confirmed
-    #      trends — so a single bearish bar is a meaningful reversal signal,
-    #      not noise.  Requiring 2 bars (30+ min) meant TREND_REVERSAL could
-    #      never fire before the hard stop on short-duration losing trades.
-    #
-    #    Guard C (VWAP confirm) — REMOVED.
-    #      Previously suppressed TREND_REVERSAL when underlying was still above
-    #      entry VWAP, to distinguish EMA dips from genuine reversals.
-    #      In practice this blocked all TREND_REVERSAL exits: we enter near VWAP,
-    #      so the underlying is often still at/above VWAP even as the option
-    #      deteriorates via gamma.  VWAP_BREAK already handles the VWAP-cross
-    #      exit — TREND_REVERSAL should fire on EMA alone.
-    trend = ema_direction(bars_15m, settings.ema_period)
-    trend_reversal_blocked = False
-    if settings.trend_reversal_min_hold_minutes > 0 and entry_time is not None:
-        _now   = now or datetime.now(tz=timezone.utc)
-        _entry = entry_time if entry_time.tzinfo else entry_time.replace(tzinfo=timezone.utc)
-        held_minutes = (_now - _entry).total_seconds() / 60
-        if held_minutes < settings.trend_reversal_min_hold_minutes:
-            # Only block while the trade is still profitable — if we're already
-            # losing, there is nothing to protect and we should exit on reversal.
-            if current_option_price >= entry_price:
-                trend_reversal_blocked = True
-
-    if not trend_reversal_blocked:
-        if direction == "CALL" and trend == "bearish":
-            if is_trend_reversal_confirmed(
-                bars_15m, "CALL", settings.ema_period, settings.trend_reversal_confirm_bars
-            ):
-                logger.info(
-                    "[exit] TREND_REVERSAL confirmed for CALL — "
-                    "%d bar(s) below EMA, underlying=%.4f entry_vwap=%.4f",
-                    settings.trend_reversal_confirm_bars,
-                    current_underlying, vwap_at_entry,
-                )
-                return ExitCondition(reason="TREND_REVERSAL", close_all=True)
-
-        if direction == "PUT" and trend == "bullish":
-            if is_trend_reversal_confirmed(
-                bars_15m, "PUT", settings.ema_period, settings.trend_reversal_confirm_bars
-            ):
-                logger.info(
-                    "[exit] TREND_REVERSAL confirmed for PUT — "
-                    "%d bar(s) above EMA, underlying=%.4f entry_vwap=%.4f",
-                    settings.trend_reversal_confirm_bars,
-                    current_underlying, vwap_at_entry,
-                )
-                return ExitCondition(reason="TREND_REVERSAL", close_all=True)
 
     return None
 
