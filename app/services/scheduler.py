@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time as _time
 from datetime import date, datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -51,16 +52,53 @@ from app.services.strategy import (
     is_market_open,
     is_past_cutoff,
     is_in_trading_window,
+    ema_direction,
 )
 from app.services.tradier import get_tradier_client
 from app.services.strategy_ema import (
-    check_5min_ema_cross,
+    check_5min_trend_filter,
+    get_5min_ema9,
+    check_1min_pullback,
+    check_1min_confirmation,
+    check_option_spread,
+    check_volume_filter,
     check_s2_exit_conditions,
 )
 
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler(timezone="America/New_York")
+
+# ---------------------------------------------------------------------------
+# Shared bar cache — avoids duplicate Tradier API calls when S1 and S2 both
+# scan the same symbol in the same cycle.
+#
+# Key  : (ticker, interval)  e.g. ("AMZN", "1min")
+# Value: (monotonic_timestamp, bars_list)
+# TTL  : 25 s — shorter than the fastest scan interval (30 s S2) so each
+#         cycle sees data no more than 25 s stale, but overlapping S1/S2 scans
+#         within the same 30-second window share the same fetched bars.
+# ---------------------------------------------------------------------------
+_bar_cache: dict[tuple[str, str], tuple[float, list]] = {}
+_BAR_CACHE_TTL: float = 25.0
+
+
+async def _get_bars(client, ticker: str, interval: str, lookback_days: int) -> list:
+    """
+    Return intraday bars with an in-memory TTL cache.
+    Both S1 and S2 scanners call this; the first fetch wins and the result is
+    reused by any subsequent call within the TTL window.
+    """
+    key = (ticker, interval)
+    entry = _bar_cache.get(key)
+    if entry and (_time.monotonic() - entry[0]) < _BAR_CACHE_TTL:
+        return entry[1]
+    bars = await client.get_intraday_bars(ticker, interval=interval, lookback_days=lookback_days)
+    if bars:
+        _bar_cache[key] = (_time.monotonic(), bars)
+        return bars
+    return []
+
 
 # ── Entry placement lock (Fix #1: MAX_OPEN_TRADES race) ──────────────────
 # Serialises the final "re-check count → place buy order → commit" step so
@@ -257,6 +295,37 @@ async def _get_tp_exit_for_chase_check(db, ticker: str) -> Trade | None:
     return result.scalar_one_or_none()
 
 
+async def _get_s2_tp_exit_for_chase_check(db, ticker: str) -> Trade | None:
+    """
+    Return the most recent PROFITABLE S2 exit for this symbol today.
+
+    Used to enforce the TP price-chase guard: if the option has appreciated
+    significantly since the last profitable exit, the move is likely extended
+    and re-entering at the higher price offers poor R/R.
+
+    Only profitable exits qualify (exit_price > entry_price).  A TRAILING_STOP
+    that closed below entry (breakeven stop hit at a loss) does NOT trigger the
+    guard — that trade failed and the price may have reset to a fair level.
+    """
+    today_start = datetime.combine(date.today(), datetime.min.time()).replace(
+        tzinfo=timezone.utc
+    )
+    result = await db.execute(
+        select(Trade)
+        .where(
+            Trade.symbol == ticker,
+            Trade.strategy_name == "ema_cross",
+            Trade.status == TradeStatus.CLOSED,
+            Trade.exit_reason.in_([ExitReason.TP2, ExitReason.TRAILING_STOP]),
+            Trade.exit_price > Trade.entry_price,   # profitable exits only
+            Trade.exit_time >= today_start,
+        )
+        .order_by(Trade.exit_time.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 async def _get_s2_recent_bad_exit(db, ticker: str) -> Trade | None:
     """
     S2 cooldown: return the most recent STOP or EMA_CROSS exit on this symbol
@@ -314,9 +383,9 @@ async def scan_for_entries() -> None:
             )
             return
 
-        # Active symbols
+        # Active symbols enrolled in S1
         sym_result = await db.execute(
-            select(Symbol).where(Symbol.active == True)  # noqa: E712
+            select(Symbol).where(Symbol.active == True, Symbol.s1_enabled == True)  # noqa: E712
         )
         symbols = sym_result.scalars().all()
 
@@ -327,8 +396,8 @@ async def scan_for_entries() -> None:
     # This replaces the old SPY 15-min EMA regime fetch (separate API call, 5-min lag).
     qqq_bars_1m: list = []
     try:
-        qqq_bars_1m = await client.get_intraday_bars(
-            settings.adaptive_band_symbol, interval="1min", lookback_days=1
+        qqq_bars_1m = await _get_bars(
+            client, settings.adaptive_band_symbol, interval="1min", lookback_days=1
         )
     except Exception as exc:
         logger.warning(
@@ -455,9 +524,9 @@ async def _attempt_entry(
     # ── Fetch market data (needed for Layers 1–5) ────────────────────────
     # 1-min bars: today only — VWAP resets each session
     # 15-min bars: multi-day lookback so EMA always has enough history
-    bars_1m  = await client.get_intraday_bars(ticker, interval="1min",  lookback_days=1)
-    bars_15m = await client.get_intraday_bars(ticker, interval="15min",
-                                              lookback_days=settings.trend_lookback_days)
+    bars_1m  = await _get_bars(client, ticker, interval="1min",  lookback_days=1)
+    bars_15m = await _get_bars(client, ticker, interval="15min",
+                               lookback_days=settings.trend_lookback_days)
     # Drop the in-progress 15-min bar — EMA trend / consecutive-bar confirmation
     # must only see completed bars.  (1-min bars are left as-is: VWAP wants the
     # partial bar, and L2/L3 already exclude bars_1m[-1] explicitly.)
@@ -934,9 +1003,9 @@ async def scan_for_entries_s2() -> None:
             logger.debug("[S2] Max S2 open trades (%d) reached", settings.s2_max_open_trades)
             return
 
-        # Fetch active S2 symbols
+        # Active symbols enrolled in S2
         sym_result = await db.execute(
-            select(Symbol).where(Symbol.active == True, Symbol.strategy == "S2")  # noqa: E712
+            select(Symbol).where(Symbol.active == True, Symbol.s2_enabled == True)  # noqa: E712
         )
         symbols = sym_result.scalars().all()
 
@@ -967,9 +1036,18 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
       G2  S2 cooldown after recent exit on this symbol
       G3  First-cross-only: symbol already had any S2 trade today
 
-    Signal (market data):
-      5-min EMA cross: EMA(9) crossed EMA(21) on the last completed 5-min bar
-                       + trigger bar candle color confirms direction
+    Signal layers (market data — all must pass):
+      Step 1   5-min Trend Filter    : EMA9>EMA21, Close>VWAP, EMA9 slope↑, EMA21 slope↑
+                                       (cached — only updates when a 5-min bar closes)
+      Step 1b  15-min Alignment Gate : 15-min ema_direction must NOT oppose the 5-min direction
+                                       (bullish 15-min blocks PUT; bearish 15-min blocks CALL;
+                                        neutral allows both)
+      Step 2   1-min Pullback        : price touches or comes within 0.10% of 5-min EMA9
+      Step 3   1-min Confirmation    : candle closes in trade direction and breaks prior bar's range
+
+    Post-signal filters:
+      Volume   : 1-min underlying volume ≥ 20-bar rolling average
+      Spread   : option bid/ask spread ≤ s2_max_spread_pct of the mid price
     """
     # ── G1: Per-symbol S2 open trade ────────────────────────────────────
     existing = await db.execute(
@@ -994,47 +1072,91 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
         )
         return
 
-    # ── G3: First-cross-only ─────────────────────────────────────────────
-    # Only take the first EMA cross per symbol per day.  Recovery crosses
-    # (EMA reverting after the real opening move) tend to be fades, not
-    # new trends.  If this symbol already has any S2 trade today (open or
-    # closed), the first cross has already been consumed — skip.
+    # ── G3: Daily trade cap per symbol ───────────────────────────────────
+    # Limit S2 entries to s2_max_trades_per_day per symbol.  A trending day
+    # can produce multiple valid pullbacks, but repeated re-entries compound
+    # intraday exposure.  Set s2_max_trades_per_day=0 to disable the cap.
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(
         tzinfo=timezone.utc
     )
-    prior_result = await db.execute(
-        select(Trade).where(
-            Trade.symbol == ticker,
-            Trade.strategy_name == "ema_cross",
-            Trade.entry_time >= today_start,
-        ).limit(1)
-    )
-    if prior_result.scalar_one_or_none():
-        logger.debug(
-            "[S2][%s] First-cross-only: symbol already traded today — skip",
-            ticker,
+    if settings.s2_max_trades_per_day > 0:
+        count_result = await db.execute(
+            select(sqlfunc.count(Trade.id)).where(
+                Trade.symbol == ticker,
+                Trade.strategy_name == "ema_cross",
+                Trade.entry_time >= today_start,
+            )
         )
-        return
+        today_count = count_result.scalar() or 0
+        if today_count >= settings.s2_max_trades_per_day:
+            logger.debug(
+                "[S2][%s] Daily cap: %d/%d S2 trades today — skip",
+                ticker, today_count, settings.s2_max_trades_per_day,
+            )
+            return
 
     # ── Fetch market data ────────────────────────────────────────────────
-    bars_5m = await client.get_intraday_bars(ticker, interval="5min", lookback_days=5)
+    # 5-min bars (multi-day): EMA history + trend filter + exit detection
+    # 1-min bars (today only): pullback level, confirmation candle, VWAP, volume
+    bars_5m = await _get_bars(client, ticker, interval="5min", lookback_days=5)
+    bars_1m = await _get_bars(client, ticker, interval="1min", lookback_days=1)
 
-    if not bars_5m:
-        logger.warning("[S2][%s] Missing 5-min bars — skipping", ticker)
+    if not bars_5m or not bars_1m:
+        missing = [tf for tf, b in (("5-min", bars_5m), ("1-min", bars_1m)) if not b]
+        logger.warning("[S2][%s] Missing %s bars — skipping", ticker, " + ".join(missing))
         return
 
-    # ── 5-min EMA cross trigger ───────────────────────────────────────────
+    # ── Step 1: 5-min Trend Filter ────────────────────────────────────────
+    # Determines direction and validates trend (cached between candle closes).
     direction: str | None = None
-    if check_5min_ema_cross(bars_5m, "CALL"):
+    if check_5min_trend_filter(bars_5m, "CALL", ticker=ticker):
         direction = "CALL"
-    elif check_5min_ema_cross(bars_5m, "PUT"):
+    elif check_5min_trend_filter(bars_5m, "PUT", ticker=ticker):
         direction = "PUT"
 
     if direction is None:
-        return  # no fresh cross this tick
+        return  # trend not aligned in either direction
+
+    # ── Step 1b: 15-min higher-timeframe alignment gate ───────────────────
+    # Block entries where the short-term 5-min trend contradicts the dominant
+    # 15-min trend.  e.g. 5-min puts bearish, 15-min still bullish → skip PUT.
+    # Neutral 15-min is allowed (early session, consolidation) — only a
+    # confirmed opposite trend blocks the trade.
+    bars_15m_s2 = await _get_bars(
+        client, ticker, interval="15min", lookback_days=settings.trend_lookback_days
+    )
+    bars_15m_s2 = completed_bars(bars_15m_s2, interval_minutes=15) if bars_15m_s2 else []
+    if bars_15m_s2:
+        htf_trend = ema_direction(bars_15m_s2)
+        blocked = (direction == "PUT" and htf_trend == "bullish") or \
+                  (direction == "CALL" and htf_trend == "bearish")
+        if blocked:
+            logger.info(
+                "[S2][%s] 15-min alignment gate — %s blocked: 15-min trend is %s",
+                ticker, direction, htf_trend,
+            )
+            return
+
+    # ── Step 2: 1-min Pullback to 5-min EMA9 ─────────────────────────────
+    ema9_5m = get_5min_ema9(bars_5m)
+    if ema9_5m is None:
+        logger.debug("[S2][%s] Could not compute 5-min EMA9 — skipping", ticker)
+        return
+    if not check_1min_pullback(bars_1m, direction, ema9_5m, ticker=ticker):
+        return  # price hasn't pulled back to EMA9 yet
+
+    # ── Step 3: 1-min Confirmation candle ─────────────────────────────────
+    if not check_1min_confirmation(bars_1m, direction, ticker=ticker):
+        return  # confirmation candle not yet closed in the right direction
+
+    # ── Volume filter (underlying liquidity) ──────────────────────────────
+    if not check_volume_filter(bars_1m, lookback=20, ticker=ticker):
+        return  # current 1-min volume below 20-bar rolling average
 
     # ── Contract selection (same logic as S1) ─────────────────────────────
-    current_price = bars_5m[-1].close
+    # Use the most recent 1-min bar close for strike selection (more current
+    # than the last 5-min bar close, which may be up to 5 minutes stale).
+    current_price = bars_1m[-1].close
 
     expirations = await client.get_option_expirations(ticker)
     if not expirations:
@@ -1065,13 +1187,18 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
 
     selected = min(eligible, key=lambda o: abs(o.strike - current_price))
 
+    # ── Option spread filter ───────────────────────────────────────────────
+    # Skip illiquid contracts where the bid/ask spread exceeds the threshold.
+    _max_spread = settings.s2_max_spread_pct
+    if not check_option_spread(selected.bid, selected.ask, _max_spread, ticker=ticker):
+        return
+
     # ── Position sizing ───────────────────────────────────────────────────
     ask_price  = round(selected.ask, 2)
     mid_price  = round(selected.mid, 2) if selected.mid and selected.mid > 0 else ask_price
 
-    # 5-min signals have enough persistence to warrant a limit order at mid.
-    # The cross was confirmed on a completed 5-min bar, so price won't reverse
-    # in the 30 s it takes to fill.  This saves half the bid-ask spread.
+    # Pullback-confirmed signals have enough persistence for a limit at mid.
+    # This saves half the bid-ask spread vs hitting the ask.
     if settings.use_limit_orders and mid_price > 0:
         order_price    = mid_price
         order_type_str = "limit"
@@ -1098,6 +1225,33 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
             ticker, order_price, settings.s2_amount_per_trade, settings.s2_risk_per_trade,
         )
         return
+
+    # ── TP price-chase guard ──────────────────────────────────────────────
+    # If this symbol had a profitable S2 exit today in the same direction,
+    # block re-entry when the new option price is significantly above the
+    # previous entry price.  After a TP the move is already extended — the
+    # EMA9 has drifted higher with price and the next "pullback" still lands
+    # at a much more expensive option level, eroding R/R.
+    # Different direction is always allowed (fresh opposing setup).
+    # Unprofitable exits (STOP, EMA_CROSS, or TRAILING_STOP below entry) are
+    # excluded — price may have reset and the new setup is legitimate.
+    if settings.s2_tp_chase_pct > 0:
+        s2_chase_trade = await _get_s2_tp_exit_for_chase_check(db, ticker)
+        if (
+            s2_chase_trade
+            and s2_chase_trade.direction.value == direction
+            and s2_chase_trade.entry_price > 0
+        ):
+            price_ratio = order_price / s2_chase_trade.entry_price
+            if price_ratio > (1 + settings.s2_tp_chase_pct):
+                logger.info(
+                    "[S2][%s] TP chase guard — %s new entry $%.2f is %.0f%% above "
+                    "last profitable entry $%.2f (max %.0f%%) — move extended, skipping",
+                    ticker, direction,
+                    order_price, (price_ratio - 1) * 100,
+                    s2_chase_trade.entry_price, settings.s2_tp_chase_pct * 100,
+                )
+                return
 
     # ── Place order (inside lock) ─────────────────────────────────────────
     order: object = None
@@ -1472,21 +1626,26 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
         return
 
     # 4. Fetch 5-min bars for EMA cross exit detection
-    bars_5m = await client.get_intraday_bars(trade.symbol, interval="5min", lookback_days=5)
+    bars_5m = await _get_bars(client, trade.symbol, interval="5min", lookback_days=5)
     if not bars_5m:
         logger.warning("[S2][%s] Trade %d: no 5-min bars — skipping exit check", trade.symbol, trade.id)
         return
 
     # 5. Evaluate S2 exit conditions
+    # mid_price → gain computation + trail level (accurate market price)
+    # bid_price → stop trigger (we exit at bid, so bid must breach the stop
+    #             before we act — prevents firing when mid == stop but bid is
+    #             already 5-10% lower due to a wide spread)
     exit_cond = check_s2_exit_conditions(
         bars=bars_5m,
         direction=trade.direction.value,
         entry_price=trade.entry_price,
-        current_price=mid_price,      # use mid for stop/trail evaluation
+        current_price=mid_price,
         stop_price=trade.stop_price or round(trade.entry_price * (1.0 - settings.s2_stop_loss_pct), 2),
         be_stop_set=trade.be_stop_set,
         entry_time=trade.entry_time,
         interval_minutes=5,
+        bid_price=bid_price,
     )
 
     if exit_cond is None:
@@ -2026,7 +2185,7 @@ def start_scheduler() -> None:
     )
     scheduler.add_job(
         scan_for_entries_s2, "interval",
-        seconds=settings.scan_interval_seconds,
+        seconds=settings.s2_scan_interval_seconds,
         id="scan_entries_s2", replace_existing=True,
     )
     scheduler.add_job(

@@ -60,6 +60,17 @@ async def _migrate(conn) -> None:
 
         # v6 → v7: broker-side resting TP limit order id
         "ALTER TABLE trades ADD COLUMN tp_order_id VARCHAR(50)",
+
+        # v7 → v8: unified watchlist — per-symbol strategy flags replace the old
+        # strategy column (which forced S1 XOR S2).  Both default to 1 so every
+        # existing symbol is enrolled in both strategies; use the UI to opt out.
+        "ALTER TABLE symbols ADD COLUMN s1_enabled BOOLEAN NOT NULL DEFAULT 1",
+        "ALTER TABLE symbols ADD COLUMN s2_enabled BOOLEAN NOT NULL DEFAULT 1",
+        # Deduplicate rows: previously the same ticker could appear twice (once as
+        # strategy='S1' and once as strategy='S2').  Keep the lowest-id row per ticker.
+        "DELETE FROM symbols WHERE id NOT IN (SELECT MIN(id) FROM symbols GROUP BY ticker)",
+        # Re-add a unique index on ticker now that duplicates are gone.
+        "CREATE UNIQUE INDEX IF NOT EXISTS uix_symbols_ticker ON symbols (ticker)",
     ]
     for stmt in migrations:
         try:

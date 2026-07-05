@@ -5,8 +5,7 @@ function ajoy() {
     // ── Navigation ──────────────────────────────────────────────
     activeTab: 'trades',
     tabs: [
-      { id: 'symbols',    label: 'Symbols (S1)' },
-      { id: 'ema_cross',  label: 'EMA Cross (S2)' },
+      { id: 'symbols',    label: 'Symbols' },
       { id: 'indicators', label: 'Indicators' },
       { id: 'trades',     label: 'Trades' },
       { id: 'settings',   label: 'Settings' },
@@ -17,13 +16,11 @@ function ajoy() {
     // ── Clock ────────────────────────────────────────────────────
     clock: '',
 
-    // ── Symbols (S1 — VWAP pullback) ─────────────────────────────
+    // ── Symbols (unified watchlist — S1 and/or S2 per row) ───────
     symbols: [],
     newTicker: '',
-
-    // ── Symbols S2 (EMA crossover) ────────────────────────────────
-    symbolsS2: [],
-    newTickerS2: '',
+    newSymbolS1: true,
+    newSymbolS2: true,
 
     // ── Indicators ───────────────────────────────────────────────
     indicators: [],
@@ -163,40 +160,41 @@ function ajoy() {
           { key: 'trend_reversal_cooldown_minutes', label: 'Reversal Cooldown (min)', hint: 'Re-entry cooldown after a TREND_REVERSAL exit',                         type: 'number', step: 1 },
         ],
       },
-      // ── Strategy 2 settings ──────────────────────────────────────
+      // ── Strategy 2 settings (EMA Pullback) ───────────────────────
       {
         id: 's2_core',
-        label: 'S2 — EMA Cross: Core',
+        label: 'S2 — EMA Pullback: Core',
         fields: [
-          { key: 's2_enabled',         label: 'S2 Enabled',           hint: 'Master switch — enable the EMA crossover strategy scanner',  type: 'bool' },
-          { key: 's2_max_open_trades', label: 'Max Open Trades',       hint: 'Max concurrent S2 positions',                               type: 'number', step: 1 },
-          { key: 's2_ema_fast',        label: 'EMA Fast Period',       hint: '1-min and 5-min fast EMA (default 9)',                      type: 'number', step: 1 },
-          { key: 's2_ema_slow',        label: 'EMA Slow Period',       hint: '1-min and 5-min slow EMA (default 21)',                     type: 'number', step: 1 },
-          { key: 's2_volume_confirm',  label: 'Volume Confirm',        hint: 'Require trigger bar volume > previous bar volume',           type: 'bool' },
-          { key: 's2_cooldown_minutes',label: 'Cooldown (min)',        hint: 'Re-entry wait after stop or EMA cross exit on this symbol', type: 'number', step: 1 },
+          { key: 's2_enabled',            label: 'S2 Enabled',              hint: 'Master switch — enable the EMA Pullback strategy scanner',                                type: 'bool' },
+          { key: 's2_max_open_trades',    label: 'Max Open Trades',          hint: 'Max concurrent S2 positions',                                                            type: 'number', step: 1 },
+          { key: 's2_ema_fast',           label: 'EMA Fast Period',          hint: 'Fast EMA period used for 5-min trend filter (Step 1) and 5-min exit detection (default 9)',  type: 'number', step: 1 },
+          { key: 's2_ema_slow',           label: 'EMA Slow Period',          hint: 'Slow EMA period used for 5-min trend filter (Step 1) and 5-min exit detection (default 21)', type: 'number', step: 1 },
+          { key: 's2_cooldown_minutes',   label: 'Cooldown (min)',           hint: 'Re-entry wait after stop or EMA cross exit on this symbol',                              type: 'number', step: 1 },
+          { key: 's2_max_spread_pct',     label: 'Max Option Spread (%)',    hint: 'Skip contract if (ask−bid)/mid exceeds this. 0.10 = 10% — filters illiquid strikes',     type: 'number', step: 0.01 },
+          { key: 's2_max_trades_per_day', label: 'Max Trades / Symbol / Day',hint: 'Cap on S2 entries per symbol per day — multiple pullbacks allowed. 0 = no cap',         type: 'number', step: 1 },
         ],
       },
       {
         id: 's2_sizing',
-        label: 'S2 — EMA Cross: Sizing & Window',
+        label: 'S2 — EMA Pullback: Sizing & Window',
         fields: [
-          { key: 's2_amount_per_trade',         label: 'Premium Budget Cap ($)',   hint: 'Max USD premium per S2 trade',                         type: 'number', step: 10 },
-          { key: 's2_risk_per_trade',           label: 'Risk Per Trade ($)',       hint: 'USD at risk at stop — sizes qty = risk / (premium × stop%)', type: 'number', step: 10 },
-          { key: 's2_trading_start_time',       label: 'Start Time (ET)',          hint: 'No S2 entries before this time',                       type: 'time' },
-          { key: 's2_last_entry_time',          label: 'Last Entry Time (ET)',     hint: 'No new S2 entries after this',                         type: 'time' },
-          { key: 's2_trading_end_time',         label: 'End / Force-Close (ET)',   hint: 'All S2 positions closed here',                         type: 'time' },
+          { key: 's2_amount_per_trade',   label: 'Premium Budget Cap ($)',  hint: 'Max USD premium per S2 trade',                                  type: 'number', step: 10 },
+          { key: 's2_risk_per_trade',     label: 'Risk Per Trade ($)',      hint: 'USD at risk at stop — sizes qty = risk / (premium × stop%)',     type: 'number', step: 10 },
+          { key: 's2_trading_start_time', label: 'Start Time (ET)',         hint: 'No S2 entries before this time',                                type: 'time' },
+          { key: 's2_last_entry_time',    label: 'Last Entry Time (ET)',    hint: 'No new S2 entries after this',                                  type: 'time' },
+          { key: 's2_trading_end_time',   label: 'End / Force-Close (ET)',  hint: 'All S2 positions closed here',                                  type: 'time' },
         ],
       },
       {
         id: 's2_exits',
-        label: 'S2 — EMA Cross: Exit Levels',
+        label: 'S2 — EMA Pullback: Exit Levels',
         fields: [
-          { key: 's2_stop_loss_pct',              label: 'Stop Loss (decimal)',       hint: '0.10 = -10% from entry',                               type: 'number', step: 0.01 },
-          { key: 's2_stop_loss_min_hold_minutes', label: 'Min Hold Before Stop (min)',hint: 'Suppress hard stop for N minutes after entry (0 = fires immediately)', type: 'number', step: 1 },
-          { key: 's2_take_profit_pct',            label: 'Take Profit (decimal)',     hint: 'Auto-set TP at entry: 0.14 = +14%. Set 0 to disable (exit on EMA cross only)', type: 'number', step: 0.01 },
-          { key: 's2_breakeven_pct',              label: 'Breakeven Trigger',        hint: 'Move stop to entry at this gain (0.10 = +10%)',         type: 'number', step: 0.01 },
-          { key: 's2_trail_pct',                  label: 'Trail Start',              hint: 'Begin trailing stop at this gain (0.20 = +20%)',        type: 'number', step: 0.01 },
-          { key: 's2_trail_from_current_pct',     label: 'Trail Distance',           hint: 'Stop = current_price × (1 - this). 0.05 = trail 5% below current', type: 'number', step: 0.01 },
+          { key: 's2_stop_loss_pct',              label: 'Stop Loss (decimal)',        hint: '0.12 = −12% from entry',                                                           type: 'number', step: 0.01 },
+          { key: 's2_stop_loss_min_hold_minutes', label: 'Min Hold Before Stop (min)', hint: 'Suppress hard stop for N minutes after entry (0 = fires immediately)',              type: 'number', step: 1 },
+          { key: 's2_take_profit_pct',            label: 'Take Profit (decimal)',      hint: 'Auto-TP at entry: 0.14 = +14%. Set 0 to disable — exit on 5-min EMA cross only',  type: 'number', step: 0.01 },
+          { key: 's2_breakeven_pct',              label: 'Breakeven Trigger',          hint: 'Move stop to entry at this gain (0.10 = +10%)',                                    type: 'number', step: 0.01 },
+          { key: 's2_trail_pct',                  label: 'Trail Start',                hint: 'Begin trailing stop at this gain (0.20 = +20%)',                                   type: 'number', step: 0.01 },
+          { key: 's2_trail_from_current_pct',     label: 'Trail Distance',             hint: 'Stop = current × (1 − this). 0.05 = trail 5% below current price',                type: 'number', step: 0.01 },
         ],
       },
     ],
@@ -208,7 +206,6 @@ function ajoy() {
 
       await Promise.all([
         this.loadSymbols(),
-        this.loadSymbolsS2(),
         this.loadIndicators(),
         this.loadGroups(),
         this.loadStrategies(),
@@ -246,13 +243,18 @@ function ajoy() {
       return res.json();
     },
 
-    // ── Symbols ──────────────────────────────────────────────────
+    // ── Symbols (unified watchlist) ───────────────────────────────
     async loadSymbols() {
       this.symbols = await this.api('GET', '/api/symbols');
     },
     async addSymbol() {
       if (!this.newTicker.trim()) return;
-      await this.api('POST', '/api/symbols', { ticker: this.newTicker.trim().toUpperCase() });
+      if (!this.newSymbolS1 && !this.newSymbolS2) return;
+      await this.api('POST', '/api/symbols', {
+        ticker: this.newTicker.trim().toUpperCase(),
+        s1_enabled: this.newSymbolS1,
+        s2_enabled: this.newSymbolS2,
+      });
       this.newTicker = '';
       await this.loadSymbols();
     },
@@ -260,33 +262,18 @@ function ajoy() {
       await this.api('PATCH', `/api/symbols/${s.id}`, { active: !s.active });
       await this.loadSymbols();
     },
+    async toggleS1(s) {
+      await this.api('PATCH', `/api/symbols/${s.id}`, { s1_enabled: !s.s1_enabled });
+      await this.loadSymbols();
+    },
+    async toggleS2(s) {
+      await this.api('PATCH', `/api/symbols/${s.id}`, { s2_enabled: !s.s2_enabled });
+      await this.loadSymbols();
+    },
     async deleteSymbol(id) {
       if (!confirm('Remove this symbol?')) return;
       await this.api('DELETE', `/api/symbols/${id}`);
       await this.loadSymbols();
-    },
-
-    // ── Symbols S2 (EMA crossover) ────────────────────────────────
-    async loadSymbolsS2() {
-      this.symbolsS2 = await this.api('GET', '/api/symbols?strategy=S2');
-    },
-    async addSymbolS2() {
-      if (!this.newTickerS2.trim()) return;
-      await this.api('POST', '/api/symbols', {
-        ticker: this.newTickerS2.trim().toUpperCase(),
-        strategy: 'S2',
-      });
-      this.newTickerS2 = '';
-      await this.loadSymbolsS2();
-    },
-    async toggleSymbolS2(s) {
-      await this.api('PATCH', `/api/symbols/${s.id}`, { active: !s.active });
-      await this.loadSymbolsS2();
-    },
-    async deleteSymbolS2(id) {
-      if (!confirm('Remove this symbol from S2?')) return;
-      await this.api('DELETE', `/api/symbols/${id}`);
-      await this.loadSymbolsS2();
     },
 
     // ── Indicators ───────────────────────────────────────────────

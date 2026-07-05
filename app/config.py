@@ -26,8 +26,9 @@ class Settings(BaseSettings):
 
     # ── Scheduler ────────────────────────────────────────────────
     scheduler_enabled: bool = True
-    scan_interval_seconds: int = 60    # how often to scan for new entries
-    manage_interval_seconds: int = 10  # how often to manage open trades
+    scan_interval_seconds: int = 60     # how often S1 scans for new entries
+    s2_scan_interval_seconds: int = 30  # how often S2 scans (shorter to catch 2-bar pullback window)
+    manage_interval_seconds: int = 10   # how often to manage open trades
 
     # ── Trading session window (ET) ──────────────────────────────
     trading_start_time: str = "09:35"  # HH:MM ET — wait 5 min after open
@@ -291,6 +292,17 @@ class Settings(BaseSettings):
     s2_max_open_trades: int = 2          # max concurrent S2 positions
 
     # Exit levels
+    # Entry filters
+    s2_max_spread_pct: float = 0.10           # max bid/ask spread as % of mid (10% default)
+    s2_max_trades_per_day: int = 2            # max S2 entries per symbol per day; 0 = no cap
+
+    # TP price-chase guard (mirrors S1's tp_chase_pct, S2-specific).
+    # After a profitable S2 exit today in the same direction, block re-entry
+    # if the new option mid is more than this % above the previous entry price.
+    # 0.12 = 12%: absorbs normal spread movement but catches genuinely extended moves.
+    # Set to 0 to disable.
+    s2_tp_chase_pct: float = 0.12
+
     s2_stop_loss_pct: float = 0.10             # hard stop at -10%
     s2_stop_loss_min_hold_minutes: int = 0     # S2 exits fast — no hold delay needed
     s2_take_profit_pct: float = 0.0            # auto-TP at entry: 0 = disabled (exit on EMA cross only); 0.14 = +14%

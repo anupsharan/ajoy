@@ -32,6 +32,7 @@ _file_handler.setFormatter(logging.Formatter(
 # Root logger at INFO — app code logs what it needs, libraries stay quiet.
 logging.getLogger().setLevel(logging.INFO)
 logging.getLogger().addHandler(_file_handler)
+logging.getLogger("app.services.strategy_ema").setLevel(logging.DEBUG)
 
 # Silence chatty third-party libraries that flood the log with DEBUG noise.
 for _noisy in (

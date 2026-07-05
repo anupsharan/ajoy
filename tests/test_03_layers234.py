@@ -22,11 +22,14 @@ class TestLayer2:
     VWAP = 150.0
 
     def _bars_above(self, n=10):
-        """Last bar is in-progress; all prior close above VWAP."""
-        return [make_bar(self.VWAP + 0.10) for _ in range(n + 1)]
+        """n+2 bars: prior + n strictly-rising confirms (all above VWAP) + in-progress.
+        The new check_bounce_confirmation requires both side AND directional (rising) confirmation.
+        """
+        return [make_bar(self.VWAP + 0.10 + i * 0.01) for i in range(n + 2)]
 
     def _bars_below(self, n=10):
-        return [make_bar(self.VWAP - 0.10) for _ in range(n + 1)]
+        """n+2 bars: prior + n strictly-falling confirms (all below VWAP) + in-progress."""
+        return [make_bar(self.VWAP - 0.10 - i * 0.01) for i in range(n + 2)]
 
     def test_call_confirmed_above_vwap(self):
         assert check_bounce_confirmation(self._bars_above(), "CALL", self.VWAP) is True
@@ -58,8 +61,8 @@ class TestLayer2:
         assert check_bounce_confirmation(bars, "CALL", self.VWAP) is False
 
     def test_custom_n_respected(self):
-        # With n=1 only needs 1 confirmed bar
-        bars = [make_bar(151.0)] * 3
+        # n=1 needs n+2=3 bars: 1 prior + 1 confirm (rising) + 1 in-progress
+        bars = [make_bar(self.VWAP + 0.10 + i * 0.01) for i in range(3)]
         assert check_bounce_confirmation(bars, "CALL", self.VWAP, n=1) is True
 
 

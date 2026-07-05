@@ -91,9 +91,16 @@
   <section x-show="activeTab === 'symbols'" x-cloak>
     <div class="flex items-center justify-between mb-4">
       <span class="font-semibold" style="color:#1C1035;">Symbols</span>
-      <form @submit.prevent="addSymbol()" class="flex gap-2">
+      <form @submit.prevent="addSymbol()" class="flex items-center gap-2">
         <input x-model="newTicker" placeholder="TICKER"
                style="width:7rem; text-transform:uppercase;" maxlength="8" />
+        <!-- Strategy selector for new symbol -->
+        <label class="flex items-center gap-1 text-xs" style="color:#1C1035; user-select:none;">
+          <input type="checkbox" x-model="newSymbolS1" /> S1
+        </label>
+        <label class="flex items-center gap-1 text-xs" style="color:#1C1035; user-select:none;">
+          <input type="checkbox" x-model="newSymbolS2" /> S2
+        </label>
         <button type="submit" class="btn-primary">Add</button>
       </form>
     </div>
@@ -103,16 +110,41 @@
     <div class="card overflow-hidden">
       <table x-show="symbols.length > 0" class="data-table">
         <thead>
-          <tr><th>Ticker</th><th>Status</th><th>Added</th><th></th></tr>
+          <tr>
+            <th>Ticker</th>
+            <th style="text-align:center;">S1</th>
+            <th style="text-align:center;">S2</th>
+            <th>Status</th>
+            <th>Added</th>
+            <th></th>
+          </tr>
         </thead>
         <tbody>
           <template x-for="s in symbols" :key="s.id">
             <tr>
               <td class="font-bold text-white" x-text="s.ticker"></td>
+              <!-- S1 toggle pill -->
+              <td style="text-align:center;">
+                <button @click="toggleS1(s)"
+                  :style="s.s1_enabled
+                    ? 'background:#6D28D9; color:#fff; border:none; border-radius:4px; padding:0.15rem 0.55rem; font-size:0.72rem; cursor:pointer; font-weight:600;'
+                    : 'background:#E5E7EB; color:#9CA3AF; border:none; border-radius:4px; padding:0.15rem 0.55rem; font-size:0.72rem; cursor:pointer;'">
+                  S1
+                </button>
+              </td>
+              <!-- S2 toggle pill -->
+              <td style="text-align:center;">
+                <button @click="toggleS2(s)"
+                  :style="s.s2_enabled
+                    ? 'background:#0891B2; color:#fff; border:none; border-radius:4px; padding:0.15rem 0.55rem; font-size:0.72rem; cursor:pointer; font-weight:600;'
+                    : 'background:#E5E7EB; color:#9CA3AF; border:none; border-radius:4px; padding:0.15rem 0.55rem; font-size:0.72rem; cursor:pointer;'">
+                  S2
+                </button>
+              </td>
               <td>
                 <button @click="toggleSymbol(s)"
                   :class="s.active ? 'badge-green' : 'badge-gray'"
-                  x-text="s.active ? 'Active' : 'Inactive'"></button>
+                  x-text="s.active ? 'Active' : 'Paused'"></button>
               </td>
               <td class="text-muted text-xs" x-text="fmtDate(s.created_at)"></td>
               <td class="text-right">
@@ -123,105 +155,6 @@
         </tbody>
       </table>
     </div>
-  </section>
-
-  <!-- ════════════════════════════════════ EMA CROSS (S2) ═══════════════ -->
-  <section x-show="activeTab === 'ema_cross'" x-cloak>
-
-    <!-- Strategy description banner -->
-    <div class="card mb-4 p-4" style="background:#F5F0FF; border:1px solid #C4B5FD;">
-      <div class="font-semibold text-purple mb-1" style="font-size:0.85rem; letter-spacing:0.05em;">
-        Strategy 2 — EMA Crossover
-      </div>
-      <p class="text-xs text-muted leading-relaxed">
-        <strong>Entry:</strong> 5-min trend filter (EMA9 vs EMA21) + 1-min EMA9 crosses EMA21 with candle color confirm.<br>
-        <strong>Exit:</strong> Opposite EMA cross on 1-min — no fixed take profit. Hard stop −10%; breakeven at +10%; trail 5% from +20%.<br>
-        <strong>Note:</strong> Use the settings panels below to configure and enable S2.
-      </p>
-    </div>
-
-    <!-- S2 Symbol management -->
-    <div class="flex items-center justify-between mb-4">
-      <span class="font-semibold" style="color:#1C1035;">EMA Cross Symbols</span>
-      <form @submit.prevent="addSymbolS2()" class="flex gap-2">
-        <input x-model="newTickerS2" placeholder="TICKER"
-               style="width:7rem; text-transform:uppercase;" maxlength="8" />
-        <button type="submit" class="btn-primary">Add</button>
-      </form>
-    </div>
-
-    <div x-show="symbolsS2.length === 0" class="empty-state">No S2 symbols yet — add one above.</div>
-
-    <div class="card overflow-hidden mb-5">
-      <table x-show="symbolsS2.length > 0" class="data-table">
-        <thead>
-          <tr><th>Ticker</th><th>Status</th><th>Added</th><th></th></tr>
-        </thead>
-        <tbody>
-          <template x-for="s in symbolsS2" :key="s.id">
-            <tr>
-              <td class="font-bold text-white" x-text="s.ticker"></td>
-              <td>
-                <button @click="toggleSymbolS2(s)"
-                  :class="s.active ? 'badge-green' : 'badge-gray'"
-                  x-text="s.active ? 'Active' : 'Inactive'"></button>
-              </td>
-              <td class="text-muted text-xs" x-text="fmtDate(s.created_at)"></td>
-              <td class="text-right">
-                <button @click="deleteSymbolS2(s.id)" class="action-btn-danger">Remove</button>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- S2 Settings panels (inline subset — full settings in the Settings tab) -->
-    <div class="font-semibold text-xs text-muted mb-3" style="text-transform:uppercase; letter-spacing:0.08em;">
-      Quick Settings
-    </div>
-
-    <template x-for="group in configGroups.filter(g => g.id.startsWith('s2_'))" :key="group.id">
-      <div class="card mb-4">
-        <div class="card-header flex justify-between items-center">
-          <span x-text="group.label"></span>
-          <button @click="saveConfigGroup(group)" class="btn-xs"
-            :class="{
-              'btn-xs': true,
-              'btn-saving': configSaving[group.id] === 'saving',
-              'btn-saved':  configSaving[group.id] === 'saved',
-              'btn-error':  configSaving[group.id] === 'error',
-            }">
-            <span x-show="configSaving[group.id] === 'idle'    || !configSaving[group.id]">Save</span>
-            <span x-show="configSaving[group.id] === 'saving'" >Saving…</span>
-            <span x-show="configSaving[group.id] === 'saved'"  >Saved ✓</span>
-            <span x-show="configSaving[group.id] === 'error'"  >Error ✗</span>
-          </button>
-        </div>
-        <div class="p-4 grid grid-2 gap-3">
-          <template x-for="field in group.fields" :key="field.key">
-            <div>
-              <label class="label-xs" x-text="field.label"></label>
-              <div class="text-xs text-muted mb-1" x-text="field.hint" style="font-size:0.68rem; line-height:1.35;"></div>
-              <template x-if="field.type === 'bool'">
-                <label class="flex items-center gap-2 text-xs" style="color:#1C1035; margin-top:0.25rem;">
-                  <input type="checkbox" :checked="config[field.key]"
-                         @change="config[field.key] = $event.target.checked" />
-                  <span x-text="config[field.key] ? 'On' : 'Off'"></span>
-                </label>
-              </template>
-              <template x-if="field.type !== 'bool'">
-                <input :type="field.type === 'number' ? 'number' : 'text'"
-                       :step="field.step || 1"
-                       x-model="config[field.key]"
-                       class="w-full mt-1" />
-              </template>
-            </div>
-          </template>
-        </div>
-      </div>
-    </template>
-
   </section>
 
   <!-- ════════════════════════════════════ INDICATORS ════════════════════ -->
@@ -931,6 +864,12 @@
       </p>
     </div>
 
+    <!-- S1 section label -->
+    <div style="font-size:0.7rem; font-weight:700; letter-spacing:0.1em; color:#7C3AED;
+                text-transform:uppercase; margin-bottom:0.75rem;">
+      Strategy 1 — VWAP Pullback
+    </div>
+
     <template x-for="group in configGroups.filter(g => !g.id.startsWith('s2_'))" :key="group.id">
       <div class="card mb-4" style="overflow:visible;">
 
@@ -1001,6 +940,84 @@
                        style="font-size:0.85rem;" />
               </template>
 
+            </div>
+          </template>
+        </div>
+
+      </div>
+    </template>
+
+    <!-- S2 section divider -->
+    <div style="display:flex; align-items:center; gap:0.75rem; margin:1.75rem 0 0.75rem;">
+      <div style="flex:1; height:1px; background:linear-gradient(to right,#0891B2,transparent);"></div>
+      <div style="font-size:0.7rem; font-weight:700; letter-spacing:0.1em; color:#0891B2;
+                  text-transform:uppercase; white-space:nowrap;">
+        Strategy 2 — EMA Pullback
+      </div>
+      <div style="flex:1; height:1px; background:linear-gradient(to left,#0891B2,transparent);"></div>
+    </div>
+
+    <template x-for="group in configGroups.filter(g => g.id.startsWith('s2_'))" :key="group.id">
+      <div class="card mb-4" style="overflow:visible; border-left:3px solid #0891B2;">
+
+        <!-- S2 Group header — teal accent -->
+        <div class="card-header flex justify-between items-center"
+             style="background:linear-gradient(to right,#ECFEFF,#F0FDFA);">
+          <span x-text="group.label" style="color:#0E7490; font-weight:600;"></span>
+          <button
+            @click="saveConfigGroup(group)"
+            :disabled="configSaving[group.id] === 'saving'"
+            style="font-size:0.75rem; min-width:5rem; background:#0891B2; color:#fff; border:none;
+                   border-radius:6px; padding:0.3rem 0.8rem; cursor:pointer; font-weight:600;"
+            x-text="configSaving[group.id] === 'saving' ? 'Saving…' :
+                    configSaving[group.id] === 'saved'  ? '✓ Saved'  :
+                    configSaving[group.id] === 'error'  ? '✗ Error'  : 'Save'">
+          </button>
+        </div>
+
+        <!-- Fields grid (same layout as S1) -->
+        <div style="padding:1rem; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:1rem;">
+          <template x-for="field in group.fields" :key="field.key">
+            <div>
+              <label class="label-xs" x-text="field.label"></label>
+              <div class="text-xs text-muted mt-1 mb-1" x-text="field.hint"
+                   style="font-size:0.68rem; color:#0891B2; opacity:0.75;"></div>
+
+              <template x-if="field.type === 'bool'">
+                <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; margin-top:0.25rem;">
+                  <div style="position:relative; width:2.5rem; height:1.25rem; flex-shrink:0;"
+                       @click="config[field.key] = !config[field.key]">
+                    <div :style="config[field.key]
+                            ? 'background:#0891B2; border-radius:9999px; width:100%; height:100%; transition:background 0.2s;'
+                            : 'background:#CFFAFE; border-radius:9999px; width:100%; height:100%; transition:background 0.2s;'">
+                    </div>
+                    <div :style="config[field.key]
+                            ? 'position:absolute; top:2px; left:calc(100% - 1.1rem); width:1rem; height:1rem; background:#fff; border-radius:50%; transition:left 0.2s;'
+                            : 'position:absolute; top:2px; left:2px; width:1rem; height:1rem; background:#fff; border-radius:50%; transition:left 0.2s;'">
+                    </div>
+                  </div>
+                  <span class="text-xs" :style="config[field.key] ? 'color:#0891B2; font-weight:600;' : 'color:#9C8EC0;'"
+                        x-text="config[field.key] ? 'Enabled' : 'Disabled'"></span>
+                </label>
+              </template>
+
+              <template x-if="field.type === 'number'">
+                <input type="number" :step="field.step" x-model.number="config[field.key]"
+                       class="w-full mt-1"
+                       style="font-family:monospace; font-size:0.85rem; border-color:#A5F3FC;" />
+              </template>
+
+              <template x-if="field.type === 'time'">
+                <input type="time" x-model="config[field.key]"
+                       class="w-full mt-1"
+                       style="font-family:monospace; font-size:0.85rem; border-color:#A5F3FC;" />
+              </template>
+
+              <template x-if="field.type === 'text'">
+                <input type="text" x-model="config[field.key]"
+                       class="w-full mt-1"
+                       style="font-size:0.85rem; border-color:#A5F3FC;" />
+              </template>
             </div>
           </template>
         </div>

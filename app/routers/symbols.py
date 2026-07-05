@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,28 +10,24 @@ router = APIRouter(prefix="/api/symbols", tags=["symbols"])
 
 
 @router.get("", response_model=list[SymbolOut])
-async def list_symbols(
-    strategy: str = Query(default="S1"),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        select(Symbol).where(Symbol.strategy == strategy).order_by(Symbol.ticker)
-    )
+async def list_symbols(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Symbol).order_by(Symbol.ticker))
     return result.scalars().all()
 
 
 @router.post("", response_model=SymbolOut, status_code=201)
 async def create_symbol(payload: SymbolCreate, db: AsyncSession = Depends(get_db)):
-    strategy = payload.strategy or "S1"
     existing = await db.execute(
-        select(Symbol).where(
-            Symbol.ticker == payload.ticker.upper(),
-            Symbol.strategy == strategy,
-        )
+        select(Symbol).where(Symbol.ticker == payload.ticker.upper())
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Ticker already exists in this strategy")
-    symbol = Symbol(ticker=payload.ticker.upper(), active=payload.active, strategy=strategy)
+        raise HTTPException(status_code=409, detail="Ticker already exists")
+    symbol = Symbol(
+        ticker=payload.ticker.upper(),
+        active=payload.active,
+        s1_enabled=payload.s1_enabled,
+        s2_enabled=payload.s2_enabled,
+    )
     db.add(symbol)
     await db.commit()
     await db.refresh(symbol)
@@ -47,6 +43,10 @@ async def update_symbol(
         raise HTTPException(status_code=404, detail="Symbol not found")
     if payload.active is not None:
         sym.active = payload.active
+    if payload.s1_enabled is not None:
+        sym.s1_enabled = payload.s1_enabled
+    if payload.s2_enabled is not None:
+        sym.s2_enabled = payload.s2_enabled
     await db.commit()
     await db.refresh(sym)
     return sym

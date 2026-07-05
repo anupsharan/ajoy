@@ -61,8 +61,10 @@ class Symbol(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    strategy: Mapped[str] = mapped_column(String(20), default="S1", nullable=False)
+    strategy: Mapped[str] = mapped_column(String(20), default="S1", nullable=False)  # legacy — kept for DB compat
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    s1_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
+    s2_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

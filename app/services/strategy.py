@@ -468,41 +468,75 @@ def check_bounce_confirmation(
     n: Optional[int] = None,
 ) -> bool:
     """
-    The last `n` *completed* 1-min bars must all close on the correct VWAP side.
+    The last `n` *completed* 1-min bars must all close on the correct VWAP side
+    AND each bar's close must be moving away from VWAP (directional confirmation).
+
     bars_1m[-1] is the in-progress bar and is always excluded.
 
-    CALL: last n completed bars all closed ABOVE vwap  → sustained bounce
-    PUT:  last n completed bars all closed BELOW vwap  → sustained rejection
+    CALL: last n bars all closed ABOVE vwap, each close HIGHER than the previous
+    PUT:  last n bars all closed BELOW vwap, each close LOWER  than the previous
 
-    A single tick through VWAP doesn't count — this requires consecutive
-    confirmed closes to filter out false spikes.
+    The directional check prevents entering a stock that is still mid-pullback
+    toward VWAP — e.g. dropping from 1.2% above VWAP to 0.3% above VWAP passes
+    the old side-only check but fails here because each bar is closing lower.
+    We need n+1 completed bars so we have a "prior" bar to compare the first
+    confirmation bar against.
     """
     n = n or settings.bounce_bars_required
-    if len(bars_1m) < n + 1 or vwap <= 0:
-        logger.debug("[L2] Not enough bars for bounce check (need %d + 1 got %d)", n, len(bars_1m))
+    # Need n confirm bars + 1 prior bar + 1 in-progress bar = n + 2 total
+    if len(bars_1m) < n + 2 or vwap <= 0:
+        logger.debug("[L2] Not enough bars for bounce check (need %d + 2 got %d)", n, len(bars_1m))
         return False
 
-    confirm_bars = bars_1m[-(n + 1):-1]   # last n completed bars
-    closes = [round(b.close, 2) for b in confirm_bars]
+    # confirm_bars: the last n completed bars (excluding in-progress bars_1m[-1])
+    # prior_bar:    the completed bar just before the confirmation window
+    confirm_bars = bars_1m[-(n + 2):-1]   # n+1 bars total: [prior] + [n confirm bars]
+    prior_bar    = confirm_bars[0]
+    confirm_bars = confirm_bars[1:]        # just the n confirmation bars
+    closes       = [round(b.close, 2) for b in confirm_bars]
+    all_bars     = [prior_bar] + list(confirm_bars)
 
     if direction == "CALL":
-        ok = all(b.close > vwap for b in confirm_bars)
-        if not ok:
+        side_ok = all(b.close > vwap for b in confirm_bars)
+        # Each bar must close higher than the one before it (rising closes)
+        dir_ok  = all(
+            all_bars[i + 1].close > all_bars[i].close
+            for i in range(len(all_bars) - 1)
+        )
+        if not side_ok:
             logger.info(
                 "[L2] Bounce NOT confirmed for CALL — need %d closes above VWAP %.2f. "
                 "Last closes: %s",
                 n, vwap, closes,
             )
-        return ok
+        elif not dir_ok:
+            logger.info(
+                "[L2] Directional bounce NOT confirmed for CALL — closes not rising. "
+                "Last closes: %s",
+                closes,
+            )
+        return side_ok and dir_ok
+
     else:  # PUT
-        ok = all(b.close < vwap for b in confirm_bars)
-        if not ok:
+        side_ok = all(b.close < vwap for b in confirm_bars)
+        # Each bar must close lower than the one before it (falling closes)
+        dir_ok  = all(
+            all_bars[i + 1].close < all_bars[i].close
+            for i in range(len(all_bars) - 1)
+        )
+        if not side_ok:
             logger.info(
                 "[L2] Bounce NOT confirmed for PUT — need %d closes below VWAP %.2f. "
                 "Last closes: %s",
                 n, vwap, closes,
             )
-        return ok
+        elif not dir_ok:
+            logger.info(
+                "[L2] Directional bounce NOT confirmed for PUT — closes not falling. "
+                "Last closes: %s",
+                closes,
+            )
+        return side_ok and dir_ok
 
 
 # ---------------------------------------------------------------------------

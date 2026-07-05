@@ -7,7 +7,7 @@ curl -s http://localhost:8000/api/trades/live | python3 -m json.tool
 
 
 # Replace "2" with ID & -d '{"exit_price": 2.58}'
-curl -s -X POST http://localhost:8000/api/trades/30/mark-closed \
+curl -s -X POST http://localhost:8000/api/trades/62/mark-closed \
   -H "Content-Type: application/json" \
   -d '{}'
 
@@ -50,3 +50,17 @@ python# if trade.stop_order_id:
 #         continue
 This is what checks every tick whether Tradier's stop order already filled independently of the bot.
 To re-enable: remove the # from those 5 lines and set BROKER_STOP_ENABLED=1 in .env.
+
+========== Trend Reversal =======
+
+TREND_REVERSAL — How It Works (S1 / vwap_pullback)
+
+What it does: Closes 100% of a position when the 15-minute EMA (period 21) flips direction against the trade — bullish EMA on a PUT, bearish EMA on a CALL.
+Data source: 15-min completed bars, fetched with TREND_LOOKBACK_DAYS (default 5 trading days) of history so the EMA has enough bars to be meaningful.
+Guard A — minimum hold window (TREND_REVERSAL_MIN_HOLD_MINUTES, default 10 min): Suppression applies only if the trade is profitable (current option price ≥ entry price). If the trade is already losing, TREND_REVERSAL can fire immediately regardless of how long the trade has been open.
+Guard B — consecutive-bar confirmation (TREND_REVERSAL_CONFIRM_BARS, default 1): The EMA must have been in the adverse direction for at least 1 completed 15-min bar before exit fires. Prevents reacting to a momentary tick.
+Guard C — VWAP confirm: Was removed. Originally suppressed TREND_REVERSAL when the underlying was still above (for CALLs) or below (for PUTs) the entry VWAP. In practice it blocked almost all TREND_REVERSAL exits because we enter near VWAP — the underlying is usually still at/near entry VWAP even as the option loses value. VWAP_BREAK handles the VWAP-cross exit separately.
+Cooldown after exit (TREND_REVERSAL_COOLDOWN_MINUTES, default 60 min): After a TREND_REVERSAL exit, the symbol enters the same cooldown as STOP and VWAP_BREAK. No re-entry for 60 minutes.
+Known limitation: TREND_REVERSAL compares the current EMA direction against the trade direction — it has no memory of what the EMA looked like at entry. If a trade was entered while the EMA was already adverse (entry quality failure), TREND_REVERSAL reads it the same as a genuine post-entry reversal and fires as soon as Guard A/B are satisfied.
+Current status: DISABLED. Removed from check_exit_conditions as of June 2026 while system is under manual observation. Config keys (TREND_REVERSAL_*) remain in .env for easy re-enablement.
+

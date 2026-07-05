@@ -32,7 +32,8 @@ from app.models import Direction, ExitReason, LogicType, TradeStatus
 class SymbolBase(BaseModel):
     ticker: str
     active: bool = True
-    strategy: str = "S1"
+    s1_enabled: bool = True
+    s2_enabled: bool = True
 
 
 class SymbolCreate(SymbolBase):
@@ -41,6 +42,8 @@ class SymbolCreate(SymbolBase):
 
 class SymbolUpdate(BaseModel):
     active: Optional[bool] = None
+    s1_enabled: Optional[bool] = None
+    s2_enabled: Optional[bool] = None
 
 
 class SymbolOut(SymbolBase):
