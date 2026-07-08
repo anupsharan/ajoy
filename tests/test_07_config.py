@@ -132,7 +132,8 @@ def test_lunch_break_allows_after_window():
     ts = _et(12, 15)
     with patch.object(settings, "lunch_break_enabled", True), \
          patch.object(settings, "lunch_break_start", "11:30"), \
-         patch.object(settings, "lunch_break_end", "12:15"):
+         patch.object(settings, "lunch_break_end", "12:15"), \
+         patch.object(settings, "last_entry_time", "15:00"):
         assert is_in_trading_window(ts) is True
 
 

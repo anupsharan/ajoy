@@ -408,6 +408,45 @@ class TradierClient:
             )
             return []
 
+    async def get_daily_bars(self, symbol: str, days: int = 40) -> list[Bar]:
+        """
+        Fetch daily OHLCV bars from /markets/history (production API).
+
+        Used by the chop-regime filter to compute a daily ATR.  `days` is
+        calendar days of lookback — 40 calendar days ≈ 27 trading days,
+        comfortably enough for ATR(14).
+        """
+        from datetime import timedelta
+        today = date.today()
+        params = {
+            "symbol": symbol,
+            "interval": "daily",
+            "start": (today - timedelta(days=days)).isoformat(),
+            "end": today.isoformat(),
+        }
+        try:
+            data = await self._data_get("/markets/history", params)
+            history = data.get("history") or {}
+            raw = history.get("day", [])
+            if isinstance(raw, dict):
+                raw = [raw]
+            bars: list[Bar] = []
+            for r in raw:
+                bars.append(
+                    Bar(
+                        time=datetime.fromisoformat(r["date"]),
+                        open=float(r["open"]),
+                        high=float(r["high"]),
+                        low=float(r["low"]),
+                        close=float(r["close"]),
+                        volume=int(r.get("volume") or 0),
+                    )
+                )
+            return bars
+        except Exception as exc:
+            logger.warning("get_daily_bars(%s) failed: %s", symbol, exc)
+            return []
+
     # Symbols that returned 400 from /markets/timesales — invalid or delisted.
     # Cached for the lifetime of the process so we log only once and then
     # silently skip them on every subsequent scan tick.

@@ -33,3 +33,104 @@
 2026-06-23 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
 2026-06-23 18:50:02 [GUARDIAN] INFO  No open option positions found — nothing to close.
 2026-06-23 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-07-07 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-07-07 18:50:01 [GUARDIAN] INFO  Guardian starting at 2026-07-08 01:50:01 UTC
+2026-07-07 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-07-07 18:50:02 [GUARDIAN] INFO  Found 1 open option position(s):
+2026-07-07 18:50:02 [GUARDIAN] INFO    PLTR260710C00139000  qty=2  cost_basis=$584.00
+2026-07-07 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/orders "HTTP/1.1 200 "
+2026-07-07 18:50:02 [GUARDIAN] INFO  HTTP Request: DELETE https://api.tradier.com/v1/accounts/6YB81397/orders/136052812 "HTTP/1.1 200 "
+2026-07-07 18:50:02 [GUARDIAN] INFO    Canceled pending order 136052812 (sell_to_close PLTR260710C00139000)
+2026-07-07 18:50:02 [GUARDIAN] INFO  Placing sell-to-close orders...
+2026-07-07 18:50:02 [GUARDIAN] INFO  HTTP Request: POST https://api.tradier.com/v1/accounts/6YB81397/orders "HTTP/1.1 200 "
+2026-07-07 18:50:02 [GUARDIAN] INFO    ✓ Sell-to-close placed  PLTR260710C00139000  qty=2  order=136059495
+2026-07-07 18:50:02 [GUARDIAN] INFO  1 / 1 position(s) closed successfully.
+2026-07-07 18:50:02 [GUARDIAN] INFO  Updating bot DB...
+Traceback (most recent call last):
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 924, in do_execute
+    cursor.execute(statement, parameters)
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/dialects/sqlite/aiosqlite.py", line 146, in execute
+    self._adapt_connection._handle_exception(error)
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/dialects/sqlite/aiosqlite.py", line 298, in _handle_exception
+    raise error
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/dialects/sqlite/aiosqlite.py", line 128, in execute
+    self.await_(_cursor.execute(operation, parameters))
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 131, in await_only
+    return current.driver.switch(awaitable)  # type: ignore[no-any-return]
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/aiosqlite/cursor.py", line 48, in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/aiosqlite/cursor.py", line 40, in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/aiosqlite/core.py", line 132, in _execute
+    return await future
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/aiosqlite/core.py", line 115, in run
+    result = function()
+sqlite3.OperationalError: no such column: trades.runner_mode
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/anupsharan/Desktop/ajoy/guardian.py", line 201, in <module>
+    asyncio.run(run())
+  File "/Users/anupsharan/.local/share/uv/python/cpython-3.10-macos-x86_64-none/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/Users/anupsharan/.local/share/uv/python/cpython-3.10-macos-x86_64-none/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/Users/anupsharan/Desktop/ajoy/guardian.py", line 191, in run
+    await _mark_db_trades_closed(Session, closed_symbols, now_utc)
+  File "/Users/anupsharan/Desktop/ajoy/guardian.py", line 98, in _mark_db_trades_closed
+    result = await db.execute(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/ext/asyncio/session.py", line 461, in execute
+    result = await greenlet_spawn(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2236, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/orm/context.py", line 293, in orm_execute_statement
+    result = conn.execute(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1418, in execute
+    return meth(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/sql/elements.py", line 515, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1640, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 2353, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 924, in do_execute
+    cursor.execute(statement, parameters)
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/dialects/sqlite/aiosqlite.py", line 146, in execute
+    self._adapt_connection._handle_exception(error)
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/dialects/sqlite/aiosqlite.py", line 298, in _handle_exception
+    raise error
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/dialects/sqlite/aiosqlite.py", line 128, in execute
+    self.await_(_cursor.execute(operation, parameters))
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 131, in await_only
+    return current.driver.switch(awaitable)  # type: ignore[no-any-return]
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/aiosqlite/cursor.py", line 48, in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/aiosqlite/cursor.py", line 40, in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/aiosqlite/core.py", line 132, in _execute
+    return await future
+  File "/Users/anupsharan/Desktop/ajoy/.venv/lib/python3.10/site-packages/aiosqlite/core.py", line 115, in run
+    result = function()
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: trades.runner_mode
+[SQL: SELECT trades.id, trades.symbol, trades.option_symbol, trades.direction, trades.strategy_name, trades.tradier_order_id, trades.stop_order_id, trades.tp_order_id, trades.quantity, trades.entry_price, trades.entry_time, trades.stop_price, trades.tp1_price, trades.tp2_price, trades.underlying_entry, trades.vwap_at_entry, trades.status, trades.tp1_hit, trades.be_stop_set, trades.runner_mode, trades.remaining_qty, trades.exit_price, trades.exit_time, trades.exit_reason, trades.pnl, trades.created_at 
+FROM trades 
+WHERE trades.status = ?]
+[parameters: ('OPEN',)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)

@@ -59,8 +59,12 @@ function ajoy() {
 
     // ── Per-trade level editor ────────────────────────────────────
     editingTradeId: null,   // trade.id currently being edited, or null
-    editStopPrice:  '',
-    editTpPrice:    '',
+    editStopPrice:  '',     // dollar value
+    editTpPrice:    '',     // dollar value
+    editStopMode:   '$',    // '$' or '%'
+    editTpMode:     '$',    // '$' or '%'
+    editStopPct:    '',     // percentage value (when editStopMode === '%')
+    editTpPct:      '',     // percentage value (when editTpMode === '%')
     editSaving:     false,
     editError:      '',
 
@@ -83,8 +87,8 @@ function ajoy() {
           { key: 'risk_per_trade',   label: 'Risk Per Trade ($)',   hint: 'USD lost if stop fires — sizes qty = risk / (entry × stop%). 0 = disable', type: 'number', step: 10 },
           { key: 'amount_per_trade', label: 'Premium Budget Cap',   hint: 'Max USD premium per trade — skips trade if 1 contract exceeds it', type: 'number', step: 10 },
           { key: 'max_open_trades',  label: 'Max Open Trades',      hint: 'Concurrent positions cap',        type: 'number', step: 1 },
-          { key: 'stop_loss_pct',    label: 'Stop Loss (decimal)',  hint: '0.27 = -27% from entry',          type: 'number', step: 0.01 },
-          { key: 'take_profit_pct',  label: 'Take Profit (decimal)',hint: '0.35 = +35% from entry',          type: 'number', step: 0.01 },
+          { key: 'stop_loss_pct',    label: 'Stop Loss (decimal)',  hint: '0.27 = -27% from entry. FALLBACK only while Structural Levels are on (used when delta is unavailable)', type: 'number', step: 0.01 },
+          { key: 'take_profit_pct',  label: 'Take Profit (decimal)',hint: '0.35 = +35% from entry. FALLBACK only while Structural Levels are on', type: 'number', step: 0.01 },
           { key: 'broker_stop_enabled', label: 'Broker-Side Stop',  hint: 'Resting stop order at Tradier — protects position if bot goes down', type: 'bool' },
           { key: 'broker_tp_enabled',   label: 'Broker-Side TP',    hint: 'Resting limit sell at TP price — auto-fills at target even if bot is down; updating Target in Open Positions also updates this order', type: 'bool' },
         ],
@@ -154,10 +158,45 @@ function ajoy() {
           { key: 'quick_loss_pct',              label: 'Quick-Loss Threshold',         hint: 'Exit if option drops this much % within the armed window (0.25 = 25%)', type: 'number', step: 0.01 },
           { key: 'quick_loss_min_hold_minutes', label: 'Quick-Loss Min Hold (min)',   hint: 'Quiet period — quick-loss does NOT fire in first N minutes (0 = arms immediately)', type: 'number', step: 1 },
           { key: 'quick_loss_max_minutes',      label: 'Quick-Loss Max Window (min)', hint: 'Upper bound — quick-loss disarmed after this many minutes of entry',   type: 'number', step: 1 },
-          { key: 'vwap_exit_band_pct',          label: 'VWAP Exit Band',             hint: 'VWAP_BREAK fires when underlying passes VWAP by this % (0.003 = 0.3%)', type: 'number', step: 0.001 },
+          { key: 'vwap_exit_band_pct',          label: 'VWAP Exit Band',             hint: 'VWAP_BREAK fires when underlying passes VWAP by this % (0.003 = 0.3%). INACTIVE while Structural Levels + Disable VWAP-Break are on', type: 'number', step: 0.001 },
           { key: 'trend_reversal_min_hold_minutes', label: 'Reversal Min Hold (min)', hint: 'Suppress TREND_REVERSAL for N min after entry (only when profitable)', type: 'number', step: 1 },
           { key: 'trend_reversal_confirm_bars',     label: 'Reversal Confirm Bars',   hint: '1 = single bar triggers exit, 2 = need 2 consecutive bars',             type: 'number', step: 1 },
           { key: 'trend_reversal_cooldown_minutes', label: 'Reversal Cooldown (min)', hint: 'Re-entry cooldown after a TREND_REVERSAL exit',                         type: 'number', step: 1 },
+          { key: 'exit_limit_orders_enabled',   label: 'Limit-Order Exits',        hint: 'Patient exits (TP, trails, signal exits, cutoff) sell via limit at the mid — saves the half-spread. Urgent exits (STOP, QUICK_LOSS, VWAP_BREAK) always market-sell', type: 'bool' },
+          { key: 'exit_limit_timeout_seconds',  label: 'Exit Limit Timeout (s)',   hint: 'Cancel the exit limit and fall back to a market sell after this many seconds (partial fills booked exactly)', type: 'number', step: 1 },
+        ],
+      },
+      // ── Structural levels + chop filter (shared S1 + S2) ─────────
+      {
+        id: 'structural',
+        label: 'Structural Levels (S1 + S2)',
+        fields: [
+          { key: 'structural_levels_enabled', label: 'Structural Levels',      hint: 'Stop = chart invalidation point (pullback low / VWAP / EMA9), target = session swing high/low, both delta-translated to option prices. Off = legacy % of premium', type: 'bool' },
+          { key: 'struct_min_reward_risk',    label: 'Min Reward/Risk',         hint: 'Skip entry if underlying target-distance ÷ stop-distance is below this (1.2 recommended). Lower to 1.0 if too few trades', type: 'number', step: 0.1 },
+          { key: 'struct_stop_buffer_pct',    label: 'Stop Buffer',             hint: 'Stop sits this far beyond the invalidation level (0.001 = 0.1%)', type: 'number', step: 0.001 },
+          { key: 'struct_pullback_lookback',  label: 'Pullback Lookback (bars)', hint: 'S1: completed 1-min bars scanned for the pullback low/high (S2 uses its 2-bar pattern)', type: 'number', step: 1 },
+          { key: 'struct_min_stop_pct',       label: 'Min Stop (% premium)',    hint: 'Option stop never tighter than this fraction of premium — floor against spread noise (0.08 = 8%)', type: 'number', step: 0.01 },
+          { key: 'struct_max_stop_pct',       label: 'Max Stop (% premium)',    hint: 'Option stop never wider than this fraction of premium — risk ceiling (0.30 = 30%)', type: 'number', step: 0.01 },
+          { key: 'struct_disable_vwap_break', label: 'Disable VWAP-Break Exit', hint: 'Skip the legacy 0.3% VWAP band exit while structural levels are on (band sits inside normal noise)', type: 'bool' },
+        ],
+      },
+      {
+        id: 'runner',
+        label: 'Runner Mode (S1 + S2)',
+        fields: [
+          { key: 'runner_mode_enabled',  label: 'Runner Mode',        hint: 'When price reaches the TP WITH momentum (last 1-min candle still pushing), waive the TP and trail instead — lets breakout winners run past the target. Exits label as RUNNER', type: 'bool' },
+          { key: 'runner_proximity_pct', label: 'Activation Zone',     hint: 'Start checking momentum when bid is within this fraction of the TP (0.05 = within 5%)', type: 'number', step: 0.01 },
+          { key: 'runner_trail_pct',     label: 'Runner Trail',        hint: 'While in runner mode, stop ratchets this far below the price and never drops (0.08 = 8%)', type: 'number', step: 0.01 },
+        ],
+      },
+      {
+        id: 'chop',
+        label: 'Chop-Day Filter (S1 + S2)',
+        fields: [
+          { key: 'chop_filter_enabled',    label: 'Chop Filter',            hint: 'Block ALL new entries while QQQ session range < ratio × daily ATR — pullback setups need a trending day', type: 'bool' },
+          { key: 'chop_min_range_ratio',   label: 'Min Range / ATR Ratio',   hint: 'QQQ must have covered this fraction of its normal daily range (0.5 = 50%). Lower to 0.4 if too few trades', type: 'number', step: 0.05 },
+          { key: 'chop_atr_period',        label: 'ATR Period (days)',       hint: 'Daily bars used for the ATR baseline (default 14)', type: 'number', step: 1 },
+          { key: 'chop_filter_start_time', label: 'Filter Start (ET)',       hint: 'Filter passes before this time — session range is naturally small right after the open', type: 'time' },
         ],
       },
       // ── Strategy 2 settings (EMA Pullback) ───────────────────────
@@ -172,6 +211,8 @@ function ajoy() {
           { key: 's2_cooldown_minutes',   label: 'Cooldown (min)',           hint: 'Re-entry wait after stop or EMA cross exit on this symbol',                              type: 'number', step: 1 },
           { key: 's2_max_spread_pct',     label: 'Max Option Spread (%)',    hint: 'Skip contract if (ask−bid)/mid exceeds this. 0.10 = 10% — filters illiquid strikes',     type: 'number', step: 0.01 },
           { key: 's2_max_trades_per_day', label: 'Max Trades / Symbol / Day',hint: 'Cap on S2 entries per symbol per day — multiple pullbacks allowed. 0 = no cap',         type: 'number', step: 1 },
+          { key: 's2_puts_enabled',       label: 'PUT Entries',              hint: 'Kill switch for the S2 PUT side (live Jun–Jul: PUTs 4W/14L, −$554 — all on dips inside uptrends)', type: 'bool' },
+          { key: 's2_put_15m_strict',     label: 'Strict PUT 15-min Gate',   hint: 'PUT requires a confirmed BEARISH 15-min trend — neutral or missing data blocks. CALL side unchanged', type: 'bool' },
         ],
       },
       {
@@ -189,12 +230,15 @@ function ajoy() {
         id: 's2_exits',
         label: 'S2 — EMA Pullback: Exit Levels',
         fields: [
-          { key: 's2_stop_loss_pct',              label: 'Stop Loss (decimal)',        hint: '0.12 = −12% from entry',                                                           type: 'number', step: 0.01 },
+          { key: 's2_stop_loss_pct',              label: 'Stop Loss (decimal)',        hint: '0.12 = −12% from entry. FALLBACK only while Structural Levels are on (used when delta is unavailable)', type: 'number', step: 0.01 },
           { key: 's2_stop_loss_min_hold_minutes', label: 'Min Hold Before Stop (min)', hint: 'Suppress hard stop for N minutes after entry (0 = fires immediately)',              type: 'number', step: 1 },
           { key: 's2_take_profit_pct',            label: 'Take Profit (decimal)',      hint: 'Auto-TP at entry: 0.14 = +14%. Set 0 to disable — exit on 5-min EMA cross only',  type: 'number', step: 0.01 },
           { key: 's2_breakeven_pct',              label: 'Breakeven Trigger',          hint: 'Move stop to entry at this gain (0.10 = +10%)',                                    type: 'number', step: 0.01 },
           { key: 's2_trail_pct',                  label: 'Trail Start',                hint: 'Begin trailing stop at this gain (0.20 = +20%)',                                   type: 'number', step: 0.01 },
-          { key: 's2_trail_from_current_pct',     label: 'Trail Distance',             hint: 'Stop = current × (1 − this). 0.05 = trail 5% below current price',                type: 'number', step: 0.01 },
+          { key: 's2_trail_from_current_pct',     label: 'Trail Distance',             hint: 'Stop = current × (1 − this). 0.05 = trail 5% below current price. Avoid <0.05 — a 1% trail stops out on the first tick of noise', type: 'number', step: 0.01 },
+          { key: 's2_structure_exit_enabled',     label: 'Structure Exit',             hint: '1-min closes back through the 5-min EMA9 close the trade in 2–3 min. Off = legacy 5-min EMA9/21 cross (10–15 min lag, never beat the stop)', type: 'bool' },
+          { key: 's2_structure_exit_bars',        label: 'Structure Exit Bars',        hint: 'Consecutive completed 1-min closes through EMA9 required (2 filters single wicks)', type: 'number', step: 1 },
+          { key: 's2_structure_exit_margin_pct',  label: 'Structure Exit Margin',      hint: 'Close must be this far beyond EMA9 to count as broken (0.0005 = 0.05%)', type: 'number', step: 0.0005 },
         ],
       },
     ],
@@ -438,18 +482,50 @@ function ajoy() {
         return;
       }
       this.editingTradeId = t.id;
+      this.editStopMode   = '$';
+      this.editTpMode     = '$';
       this.editStopPrice  = t.stop_price != null ? Number(t.stop_price).toFixed(2) : '';
       this.editTpPrice    = t.tp2_price  != null ? Number(t.tp2_price).toFixed(2)  : '';
+      this.editStopPct    = '';
+      this.editTpPct      = '';
       this.editSaving     = false;
       this.editError      = '';
+    },
+
+    // Preview: dollar equivalent of a % input
+    stopDollarPreview(entry) {
+      const pct = parseFloat(this.editStopPct);
+      if (isNaN(pct) || pct <= 0 || !entry) return '';
+      return '= $' + (entry * (1 - pct / 100)).toFixed(2);
+    },
+    tpDollarPreview(entry) {
+      const pct = parseFloat(this.editTpPct);
+      if (isNaN(pct) || pct <= 0 || !entry) return '';
+      return '= $' + (entry * (1 + pct / 100)).toFixed(2);
     },
 
     async saveLevels(t) {
       this.editError  = '';
       this.editSaving = true;
+      const entry = t.entry_price;
       const payload = {};
-      if (this.editStopPrice !== '') payload.stop_price = parseFloat(this.editStopPrice);
-      if (this.editTpPrice   !== '') payload.tp2_price  = parseFloat(this.editTpPrice);
+
+      // Resolve stop: convert % → $ if needed
+      if (this.editStopMode === '%') {
+        const pct = parseFloat(this.editStopPct);
+        if (!isNaN(pct) && pct > 0) payload.stop_price = parseFloat((entry * (1 - pct / 100)).toFixed(2));
+      } else if (this.editStopPrice !== '') {
+        payload.stop_price = parseFloat(this.editStopPrice);
+      }
+
+      // Resolve TP: convert % → $ if needed
+      if (this.editTpMode === '%') {
+        const pct = parseFloat(this.editTpPct);
+        if (!isNaN(pct) && pct > 0) payload.tp2_price = parseFloat((entry * (1 + pct / 100)).toFixed(2));
+      } else if (this.editTpPrice !== '') {
+        payload.tp2_price = parseFloat(this.editTpPrice);
+      }
+
       if (!Object.keys(payload).length) {
         this.editError  = 'Enter at least one value to update.';
         this.editSaving = false;

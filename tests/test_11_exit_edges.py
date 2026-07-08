@@ -39,7 +39,6 @@ def _exit(**kw):
         tp1_hit=False,
         vwap_at_entry=150.0,
         current_underlying=151.0,
-        bars_15m=rising_bars(n=30),
         remaining_qty=2,
         entry_time=_old_entry(30),   # 30 min old — past any hold window
     )
@@ -62,10 +61,9 @@ def test_tp2_beats_vwap_break():
 
 
 def test_tp2_beats_trend_reversal():
-    """TP2 fires before trend reversal (priority 4)."""
+    """TP2 fires regardless of EMA direction (TREND_REVERSAL is handled by scheduler, not here)."""
     result = _exit(
         current_option_price=6.75,
-        bars_15m=falling_bars(n=30),  # would trigger TREND_REVERSAL
     )
     assert result is not None
     assert result.reason == "TP2"
@@ -83,23 +81,22 @@ def test_stop_beats_vwap_break():
 
 
 def test_stop_beats_trend_reversal():
-    """Stop (priority 1) beats trend reversal."""
+    """Stop fires before VWAP_BREAK and EMA checks."""
     stop = round(5.00 * (1 - settings.stop_loss_pct), 2)
     result = _exit(
         current_option_price=stop,
-        bars_15m=falling_bars(n=30),  # would trigger TREND_REVERSAL
+        current_underlying=148.0,   # would also trigger VWAP_BREAK
     )
     assert result is not None
     assert result.reason == "STOP"
 
 
 def test_vwap_break_beats_trend_reversal():
-    """VWAP break (priority 3) beats trend reversal (priority 4)."""
+    """VWAP break fires (priority 3) — TREND_REVERSAL now handled by scheduler."""
     result = _exit(
         direction="CALL",
         current_option_price=5.00,
         current_underlying=148.0,    # below VWAP − band → VWAP_BREAK
-        bars_15m=falling_bars(n=30), # also TREND_REVERSAL
     )
     assert result is not None
     assert result.reason == "VWAP_BREAK"
@@ -140,7 +137,6 @@ def test_call_vwap_break_one_tick_below_boundary_fires():
         current_option_price=5.00,
         vwap_at_entry=vwap,
         current_underlying=vwap - band - 0.01,
-        bars_15m=rising_bars(n=30),  # keep bullish so trend reversal doesn't fire
     )
     assert result is not None
     assert result.reason == "VWAP_BREAK"
@@ -159,7 +155,6 @@ def test_put_vwap_break_exactly_at_band_boundary_does_not_fire():
         current_option_price=5.00,
         vwap_at_entry=vwap,
         current_underlying=vwap + band,
-        bars_15m=falling_bars(n=30),
     )
     assert result is None or result.reason != "VWAP_BREAK"
 
@@ -177,7 +172,6 @@ def test_put_vwap_break_above_band_fires():
         current_option_price=5.00,
         vwap_at_entry=vwap,
         current_underlying=vwap + band + 0.01,
-        bars_15m=flat_bars(n=30),  # flat → neutral trend so no TREND_REVERSAL
     )
     assert result is not None
     assert result.reason == "VWAP_BREAK"
@@ -200,46 +194,11 @@ def test_vwap_at_entry_zero_skips_break_check():
 # ===========================================================================
 
 def test_neutral_trend_does_not_trigger_reversal():
-    """Flat/neutral 15m EMA should NOT produce a TREND_REVERSAL exit."""
+    """No stop/TP/VWAP condition → no exit (TREND_REVERSAL handled by scheduler)."""
     result = _exit(
         direction="CALL",
-        bars_15m=flat_bars(n=30),  # flat → EMA direction = "neutral"
     )
     assert result is None
-
-
-def test_trend_reversal_put_on_bullish_ema():
-    """PUT trade: if 15m EMA turns bullish → TREND_REVERSAL.
-    underlying just above VWAP (Guard C: PUT needs underlying > VWAP to fire).
-    """
-    result = _exit(
-        direction="PUT",
-        entry_price=5.00,
-        stop_price=3.75,
-        tp1_price=6.75,
-        tp2_price=6.75,
-        current_option_price=5.00,
-        current_underlying=150.1,   # just above VWAP — Guard C satisfied for PUT
-        vwap_at_entry=150.0,
-        bars_15m=rising_bars(n=30),
-    )
-    assert result is not None
-    assert result.reason == "TREND_REVERSAL"
-
-
-def test_trend_reversal_call_on_bearish_ema():
-    """CALL trade: if 15m EMA turns bearish → TREND_REVERSAL.
-    underlying just below VWAP (Guard C: CALL needs underlying < VWAP to fire).
-    """
-    result = _exit(
-        direction="CALL",
-        current_option_price=5.00,
-        current_underlying=149.9,   # just below VWAP — Guard C satisfied for CALL
-        vwap_at_entry=150.0,
-        bars_15m=falling_bars(n=30),
-    )
-    assert result is not None
-    assert result.reason == "TREND_REVERSAL"
 
 
 # ===========================================================================
@@ -289,46 +248,25 @@ def test_compute_levels_rounding():
 
 def test_trend_reversal_suppressed_within_hold_window():
     """
-    CALL trade entered 2 minutes ago with a bearish EMA → TREND_REVERSAL
-    must be suppressed during the hold window (default 10 min).
+    CALL trade entered 2 minutes ago — no stop/TP/VWAP conditions fire.
+    (TREND_REVERSAL is handled by the scheduler, not check_exit_conditions.)
     """
-    with patch.object(settings, "trend_reversal_min_hold_minutes", 10):
-        result = _exit(
-            direction="CALL",
-            current_option_price=5.00,      # no stop / TP
-            current_underlying=151.0,       # above VWAP — no VWAP_BREAK
-            bars_15m=falling_bars(n=30),    # bearish EMA — would fire TREND_REVERSAL
-            entry_time=_old_entry(2),       # only 2 minutes old — inside window
-        )
-    assert result is None   # suppressed
-
-
-def test_trend_reversal_fires_after_hold_window():
-    """
-    Same setup but entry_time is 11 minutes ago → hold window (10 min) has
-    elapsed, so TREND_REVERSAL must fire normally.
-    """
-    with patch.object(settings, "trend_reversal_min_hold_minutes", 10):
-        result = _exit(
-            direction="CALL",
-            current_option_price=5.00,
-            current_underlying=149.9,   # just below VWAP — Guard C satisfied for CALL
-            bars_15m=falling_bars(n=30),
-            entry_time=_old_entry(11),      # 11 min old — outside window
-        )
-    assert result is not None
-    assert result.reason == "TREND_REVERSAL"
+    result = _exit(
+        direction="CALL",
+        current_option_price=5.00,      # no stop / TP
+        current_underlying=151.0,       # above VWAP — no VWAP_BREAK
+        entry_time=_old_entry(2),
+    )
+    assert result is None
 
 
 def test_stop_fires_regardless_of_hold_window():
     """
-    Hard stop must NEVER be suppressed by the hold window, even on a brand-new trade.
+    Hard stop must fire even on a brand-new trade.
     """
-    with patch.object(settings, "trend_reversal_min_hold_minutes", 10), \
-         patch.object(settings, "quick_loss_pct", 0.0):
+    with patch.object(settings, "stop_loss_min_hold_minutes", 0):
         result = _exit(
             current_option_price=round(5.00 * (1 - settings.stop_loss_pct), 2),  # at stop
-            bars_15m=falling_bars(n=30),    # also bearish EMA
             entry_time=_old_entry(0),       # 0 minutes old — just entered
         )
     assert result is not None
@@ -337,36 +275,17 @@ def test_stop_fires_regardless_of_hold_window():
 
 def test_trend_reversal_suppressed_with_naive_entry_time():
     """
-    SQLite returns naive UTC datetimes; the guard must handle them correctly
-    (should not raise, and should still suppress within the hold window).
+    SQLite returns naive UTC datetimes; check_exit_conditions must not raise.
+    No stop/TP/VWAP conditions → no exit.
     """
     naive_entry = datetime.utcnow() - timedelta(minutes=1)  # naive, 1 min old
-    with patch.object(settings, "trend_reversal_min_hold_minutes", 10):
-        result = _exit(
-            direction="CALL",
-            current_option_price=5.00,
-            current_underlying=151.0,
-            bars_15m=falling_bars(n=30),
-            entry_time=naive_entry,
-        )
-    assert result is None   # suppressed — 1 min < 10 min hold window
-
-
-def test_trend_reversal_hold_disabled_fires_immediately():
-    """
-    When TREND_REVERSAL_MIN_HOLD_MINUTES=0 the guard is off and a brand-new
-    trade can be exited immediately by a trend flip.
-    """
-    with patch.object(settings, "trend_reversal_min_hold_minutes", 0):
-        result = _exit(
-            direction="CALL",
-            current_option_price=5.00,
-            current_underlying=149.9,   # just below VWAP — Guard C satisfied for CALL
-            bars_15m=falling_bars(n=30),
-            entry_time=_old_entry(0),       # just entered
-        )
-    assert result is not None
-    assert result.reason == "TREND_REVERSAL"
+    result = _exit(
+        direction="CALL",
+        current_option_price=5.00,
+        current_underlying=151.0,
+        entry_time=naive_entry,
+    )
+    assert result is None
 
 
 def test_compute_levels_small_entry():

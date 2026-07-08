@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time as _time
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -49,6 +50,11 @@ from app.services.strategy import (
     check_exit_conditions,
     compute_trailing_stop,
     compute_trade_levels,
+    compute_structural_levels,
+    get_structural_stop_target,
+    calculate_atr,
+    check_chop_regime,
+    should_activate_runner,
     is_market_open,
     is_past_cutoff,
     is_in_trading_window,
@@ -57,6 +63,7 @@ from app.services.strategy import (
 from app.services.tradier import get_tradier_client
 from app.services.strategy_ema import (
     check_5min_trend_filter,
+    check_ema_cross_freshness,
     get_5min_ema9,
     check_1min_pullback,
     check_1min_confirmation,
@@ -64,6 +71,9 @@ from app.services.strategy_ema import (
     check_volume_filter,
     check_s2_exit_conditions,
 )
+from zoneinfo import ZoneInfo as _ZoneInfo
+
+_ET = _ZoneInfo("America/New_York")
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +108,73 @@ async def _get_bars(client, ticker: str, interval: str, lookback_days: int) -> l
         _bar_cache[key] = (_time.monotonic(), bars)
         return bars
     return []
+
+
+# ---------------------------------------------------------------------------
+# Chop-day regime gate — QQQ session range vs daily ATR
+#
+# One shared gate for both strategies.  The QQQ daily ATR is cached for an
+# hour (it barely changes intraday); the verdict is cached for 60 s so the
+# S1 (60 s) and S2 (30 s) scan loops don't double the API traffic.
+# ---------------------------------------------------------------------------
+_atr_cache: dict[str, tuple[float, float]] = {}       # symbol -> (monotonic_ts, atr)
+_ATR_CACHE_TTL: float = 3600.0
+_chop_cache: tuple[float, bool, float] | None = None  # (monotonic_ts, is_chop, ratio)
+_CHOP_CACHE_TTL: float = 60.0
+
+
+async def _get_daily_atr(client, symbol: str) -> float:
+    entry = _atr_cache.get(symbol)
+    if entry and (_time.monotonic() - entry[0]) < _ATR_CACHE_TTL:
+        return entry[1]
+    daily_bars = await client.get_daily_bars(symbol, days=40)
+    atr = calculate_atr(daily_bars, settings.chop_atr_period)
+    if atr > 0:
+        _atr_cache[symbol] = (_time.monotonic(), atr)
+    return atr
+
+
+async def _chop_gate_blocks(client, qqq_bars_1m: list | None = None) -> bool:
+    """
+    Return True when new entries should be blocked because today is a chop day
+    (QQQ session range < chop_min_range_ratio × daily ATR).
+
+    Never blocks before chop_filter_start_time ET or on missing data.
+    """
+    global _chop_cache
+    if not settings.chop_filter_enabled:
+        return False
+
+    # Session-progress guard: range is naturally small right after the open
+    now_et = datetime.now(tz=_ET)
+    h, m = map(int, settings.chop_filter_start_time.split(":"))
+    if (now_et.hour, now_et.minute) < (h, m):
+        return False
+
+    if _chop_cache and (_time.monotonic() - _chop_cache[0]) < _CHOP_CACHE_TTL:
+        return _chop_cache[1]
+
+    if qqq_bars_1m is None:
+        qqq_bars_1m = await _get_bars(
+            client, settings.adaptive_band_symbol, interval="1min", lookback_days=1
+        )
+    atr = await _get_daily_atr(client, settings.adaptive_band_symbol)
+    is_chop, ratio = check_chop_regime(qqq_bars_1m, atr)
+    _chop_cache = (_time.monotonic(), is_chop, ratio)
+
+    if is_chop:
+        logger.info(
+            "[chop-gate] CHOP day — QQQ session range is %.0f%% of ATR(%d) "
+            "(min %.0f%%) — blocking new entries",
+            ratio * 100, settings.chop_atr_period,
+            settings.chop_min_range_ratio * 100,
+        )
+    else:
+        logger.debug(
+            "[chop-gate] range/ATR ratio %.2f ≥ %.2f — trend day, entries allowed",
+            ratio, settings.chop_min_range_ratio,
+        )
+    return is_chop
 
 
 # ── Entry placement lock (Fix #1: MAX_OPEN_TRADES race) ──────────────────
@@ -353,6 +430,28 @@ async def _get_s2_recent_bad_exit(db, ticker: str) -> Trade | None:
     return result.scalar_one_or_none()
 
 
+async def _get_s2_daily_pnl(db) -> float:
+    """
+    Sum of realized S2 P&L for the current UTC day.
+    Only counts closed ema_cross trades with a non-null pnl — open positions
+    are excluded (they haven't locked in a loss yet).
+    Used by the S2-specific daily loss circuit breaker (s2_max_daily_loss).
+    """
+    today_start = datetime.combine(date.today(), datetime.min.time()).replace(
+        tzinfo=timezone.utc
+    )
+    result = await db.execute(
+        select(sqlfunc.sum(Trade.pnl)).where(
+            Trade.strategy_name == "ema_cross",
+            Trade.status == TradeStatus.CLOSED,
+            Trade.pnl.is_not(None),
+            Trade.exit_time >= today_start,
+        )
+    )
+    total = result.scalar()
+    return float(total) if total is not None else 0.0
+
+
 # ---------------------------------------------------------------------------
 # Entry scanner (S1 — VWAP pullback)
 # ---------------------------------------------------------------------------
@@ -419,6 +518,12 @@ async def scan_for_entries() -> None:
         "[adaptive-band] %s → band=%.2f%% (%s) | regime=%s",
         settings.adaptive_band_symbol, band_pct * 100, band_label, regime.upper(),
     )
+
+    # ── Chop-day gate — skip the whole scan cycle on range-less days ────────
+    # Pullback-continuation setups need follow-through; when QQQ has covered
+    # less than chop_min_range_ratio of its normal daily range there is none.
+    if await _chop_gate_blocks(client, qqq_bars_1m):
+        return
 
     # Run all symbol scans concurrently — each gets its own DB session so
     # there is no SQLAlchemy session-sharing across coroutines.
@@ -751,14 +856,59 @@ async def _attempt_entry(
     if cost_per_contract <= 0:
         return
 
+    # ── Structural (chart-based) levels ───────────────────────────────────
+    # Stop anchored to the setup's invalidation point (below pullback low /
+    # VWAP for a CALL), target at the session swing high/low, translated to
+    # option prices via the contract's delta.  Enforces a minimum underlying
+    # reward/risk — setups with no room to the target are skipped entirely.
+    struct = None
+    if settings.structural_levels_enabled:
+        stop_u, target_u = get_structural_stop_target(
+            bars_1m, direction, signal.vwap,
+            buffer_pct=settings.struct_stop_buffer_pct,
+            pullback_lookback=settings.struct_pullback_lookback,
+        )
+        struct = compute_structural_levels(
+            direction=direction,
+            option_entry=order_price,
+            delta=selected.delta,
+            underlying_entry=signal.current_price,
+            stop_underlying=stop_u,
+            target_underlying=target_u,
+        )
+        if not struct.ok:
+            if struct.skip_reason == "fallback":
+                logger.info(
+                    "[%s] Structural levels unavailable (no delta) — "
+                    "using percentage levels", ticker,
+                )
+                struct = None
+            else:
+                logger.info(
+                    "[%s] Structural gate blocked %s entry — %s",
+                    ticker, direction, struct.skip_reason,
+                )
+                return
+        else:
+            logger.info(
+                "[%s] Structural levels: stop_u=%.2f target_u=%.2f R/R=%.2f "
+                "→ option SL=%.2f (−%.0f%%) TP=%.2f",
+                ticker, struct.stop_underlying, struct.target_underlying,
+                struct.reward_risk, struct.stop_price, struct.risk_pct * 100,
+                struct.tp_price,
+            )
+
     # ── Fixed-dollar risk sizing + premium budget cap ─────────────────────
     # Risk-based qty:   risk_per_trade / (premium lost if the stop fires)
     # Budget-based qty: amount_per_trade / cost of one contract
     # Final qty is the smaller of the two.  If even 1 contract exceeds either
     # limit, SKIP the trade — never "round up" past the configured risk.
+    # With structural levels the risk fraction is the ACTUAL stop distance,
+    # so every trade risks ~risk_per_trade dollars at its structural stop.
+    risk_frac = struct.risk_pct if struct else settings.stop_loss_pct
     budget_qty = int(settings.amount_per_trade / cost_per_contract)
-    if settings.risk_per_trade > 0 and settings.stop_loss_pct > 0:
-        risk_per_contract = cost_per_contract * settings.stop_loss_pct
+    if settings.risk_per_trade > 0 and risk_frac > 0:
+        risk_per_contract = cost_per_contract * risk_frac
         risk_qty = int(settings.risk_per_trade / risk_per_contract)
         qty = min(risk_qty, budget_qty)
     else:
@@ -770,7 +920,7 @@ async def _attempt_entry(
             "(premium $%.0f > budget $%.0f, or risk $%.0f > risk/trade $%.0f)",
             ticker, order_price,
             cost_per_contract, settings.amount_per_trade,
-            cost_per_contract * settings.stop_loss_pct, settings.risk_per_trade,
+            cost_per_contract * risk_frac, settings.risk_per_trade,
         )
         return
 
@@ -907,7 +1057,32 @@ async def _attempt_entry(
             return
         entry_price = ask_price
 
-    levels = compute_trade_levels(entry_price, direction)
+    # Recompute levels from the ACTUAL fill price.  Structural: keep the same
+    # underlying anchor levels, re-translate to option prices via delta.
+    if struct:
+        refit = compute_structural_levels(
+            direction=direction,
+            option_entry=entry_price,
+            delta=selected.delta,
+            underlying_entry=signal.current_price,
+            stop_underlying=struct.stop_underlying,
+            target_underlying=struct.target_underlying,
+        )
+        if refit.ok:
+            levels = {
+                "stop_price": refit.stop_price,
+                "tp1_price": refit.tp_price,
+                "tp2_price": refit.tp_price,
+            }
+        else:
+            # Fill moved enough to break the refit — keep pre-fill levels
+            levels = {
+                "stop_price": struct.stop_price,
+                "tp1_price": struct.tp_price,
+                "tp2_price": struct.tp_price,
+            }
+    else:
+        levels = compute_trade_levels(entry_price, direction)
 
     trade = Trade(
         symbol=ticker,
@@ -931,16 +1106,15 @@ async def _attempt_entry(
         ticker, direction, selected.symbol, qty, entry_price,
         levels["stop_price"], levels["tp2_price"],
         qty * cost_per_contract,
-        qty * entry_price * settings.stop_loss_pct * 100,
+        qty * (entry_price - levels["stop_price"]) * 100,
     )
 
     # ── Broker-side resting stop order ───────────────────────────────────
-    # TEMPORARILY DISABLED — letting trades mature 10-15 min before any stop
-    # fires.  Bot-side stop (manage loop) is the only protection right now.
-    # Re-enable once the strategy proves consistent win rate.
-    #
-    # if settings.broker_stop_enabled:
-    #     await _place_broker_stop(db, client, trade)
+    # Placed as a GTC sell-to-close stop at the trade's stop_price.
+    # Can coexist with a TP limit order — _close_trade cancels both before
+    # placing any bot-initiated exit, so double-sell is not a risk.
+    if settings.broker_stop_enabled:
+        await _place_broker_stop(db, client, trade)
 
     # ── Broker-side resting TP limit order ───────────────────────────────
     if settings.broker_tp_enabled:
@@ -991,6 +1165,23 @@ async def scan_for_entries_s2() -> None:
             logger.info("[S2] Daily loss limit reached — no new S2 entries today")
             return
 
+        # Chop-day gate (shared with S1; 60-s cached verdict)
+        if await _chop_gate_blocks(client):
+            return
+
+        # S2-specific daily loss circuit breaker
+        # Tracks only S2 (ema_cross) realized losses — S1 losses don't count against S2's budget.
+        # Set S2_MAX_DAILY_LOSS=0 in .env to disable.
+        if settings.s2_max_daily_loss > 0:
+            s2_pnl = await _get_s2_daily_pnl(db)
+            if s2_pnl <= -abs(settings.s2_max_daily_loss):
+                logger.info(
+                    "[S2] S2 daily loss circuit breaker triggered ($%.2f realized) — "
+                    "no new S2 entries today",
+                    s2_pnl,
+                )
+                return
+
         # S2 max concurrent positions
         s2_open_result = await db.execute(
             select(Trade).where(
@@ -1039,21 +1230,28 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
     Signal layers (market data — all must pass):
       Step 1   5-min Trend Filter    : EMA9>EMA21, Close>VWAP, EMA9 slope↑, EMA21 slope↑
                                        (cached — only updates when a 5-min bar closes)
-      Step 1b  15-min Alignment Gate : 15-min ema_direction must NOT oppose the 5-min direction
-                                       (bullish 15-min blocks PUT; bearish 15-min blocks CALL;
-                                        neutral allows both)
+      Step 1b  EMA Cross Freshness   : EMA9/21 cross must be ≤ s2_cross_max_bars_old 5-min bars ago
+                                       (blocks stale/exhausted trends; 0 = disabled)
+      Step 1c  15-min Alignment Gate : CALL — blocked only by a bearish 15-min trend
+                                       (neutral allowed).
+                                       PUT  — with s2_put_15m_strict (default on) requires a
+                                       confirmed BEARISH 15-min trend; neutral or missing
+                                       15-min data blocks.  s2_puts_enabled=0 disables the
+                                       PUT side entirely.
       Step 2   1-min Pullback        : price touches or comes within 0.10% of 5-min EMA9
-      Step 3   1-min Confirmation    : candle closes in trade direction and breaks prior bar's range
+      Step 3   1-min Confirmation    : candle closes in trade direction, breaks prior bar's range,
+                                       AND close reclaims EMA9 (CALL: close > EMA9; PUT: close < EMA9)
 
     Post-signal filters:
       Volume   : 1-min underlying volume ≥ 20-bar rolling average
       Spread   : option bid/ask spread ≤ s2_max_spread_pct of the mid price
     """
-    # ── G1: Per-symbol S2 open trade ────────────────────────────────────
+    # ── G1: Per-symbol open trade (any strategy) ────────────────────────
+    # Prevents S2 from entering a symbol that S1 already holds, and vice versa.
+    # Mirrors S1's G4 — strategy-agnostic so both strategies respect each other.
     existing = await db.execute(
         select(Trade).where(
             Trade.symbol == ticker,
-            Trade.strategy_name == "ema_cross",
             Trade.status == TradeStatus.OPEN,
         )
     )
@@ -1117,23 +1315,57 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
     if direction is None:
         return  # trend not aligned in either direction
 
-    # ── Step 1b: 15-min higher-timeframe alignment gate ───────────────────
-    # Block entries where the short-term 5-min trend contradicts the dominant
-    # 15-min trend.  e.g. 5-min puts bearish, 15-min still bullish → skip PUT.
-    # Neutral 15-min is allowed (early session, consolidation) — only a
-    # confirmed opposite trend blocks the trade.
+    # ── PUT kill switch ───────────────────────────────────────────────────
+    # Live results (Jun 8 – Jul 7 2026): S2 PUTs went 4W/14L for −$554 while
+    # CALLs were net positive.  s2_puts_enabled=0 disables the PUT side
+    # entirely until the signal is re-validated in backtests.
+    if direction == "PUT" and not settings.s2_puts_enabled:
+        logger.info("[S2][%s] PUT entries disabled (s2_puts_enabled=0) — skip", ticker)
+        return
+
+    # ── Step 1b: EMA cross freshness ──────────────────────────────────────
+    # Block entries when the EMA9/21 cross is older than s2_cross_max_bars_old
+    # 5-min bars (default 8 bars = 40 min).  A cross that happened hours ago
+    # means price has been trending for a long time and the move is likely
+    # exhausted — entering now is chasing, not catching a fresh pullback.
+    if not check_ema_cross_freshness(bars_5m, direction, ticker=ticker):
+        return
+
+    # ── Step 1c: 15-min higher-timeframe alignment gate ───────────────────
+    # CALL: blocked only by a confirmed OPPOSING (bearish) 15-min trend.
+    #       Neutral is allowed (early session, consolidation).
+    # PUT:  asymmetric on purpose.  Live results (Jun 8 – Jul 7 2026) showed
+    #       almost every losing S2 PUT fired on a 5-min dip inside a larger
+    #       15-min uptrend — the old symmetric gate let them through because
+    #       a NEUTRAL 15-min allowed both directions.  With s2_put_15m_strict
+    #       enabled, a PUT requires the 15-min trend to be confirmed BEARISH;
+    #       neutral or missing 15-min data blocks the entry.
     bars_15m_s2 = await _get_bars(
         client, ticker, interval="15min", lookback_days=settings.trend_lookback_days
     )
     bars_15m_s2 = completed_bars(bars_15m_s2, interval_minutes=15) if bars_15m_s2 else []
-    if bars_15m_s2:
-        htf_trend = ema_direction(bars_15m_s2)
-        blocked = (direction == "PUT" and htf_trend == "bullish") or \
-                  (direction == "CALL" and htf_trend == "bearish")
-        if blocked:
+    htf_trend = ema_direction(bars_15m_s2) if bars_15m_s2 else "unknown"
+
+    if direction == "CALL":
+        if htf_trend == "bearish":
             logger.info(
-                "[S2][%s] 15-min alignment gate — %s blocked: 15-min trend is %s",
-                ticker, direction, htf_trend,
+                "[S2][%s] 15-min alignment gate — CALL blocked: 15-min trend is bearish",
+                ticker,
+            )
+            return
+    else:  # PUT
+        if settings.s2_put_15m_strict:
+            if htf_trend != "bearish":
+                logger.info(
+                    "[S2][%s] 15-min alignment gate (strict) — PUT blocked: "
+                    "15-min trend is %s (need confirmed bearish)",
+                    ticker, htf_trend,
+                )
+                return
+        elif htf_trend == "bullish":
+            logger.info(
+                "[S2][%s] 15-min alignment gate — PUT blocked: 15-min trend is bullish",
+                ticker,
             )
             return
 
@@ -1146,7 +1378,10 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
         return  # price hasn't pulled back to EMA9 yet
 
     # ── Step 3: 1-min Confirmation candle ─────────────────────────────────
-    if not check_1min_confirmation(bars_1m, direction, ticker=ticker):
+    # Pass ema9_5m so the confirmation requires close to reclaim EMA9
+    # (CALL: close > EMA9; PUT: close < EMA9). Weak bounces that stall on
+    # the wrong side of EMA9 are filtered out before committing capital.
+    if not check_1min_confirmation(bars_1m, direction, ema9_5m=ema9_5m, ticker=ticker):
         return  # confirmation candle not yet closed in the right direction
 
     # ── Volume filter (underlying liquidity) ──────────────────────────────
@@ -1210,9 +1445,51 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
     if cost_per_contract <= 0:
         return
 
+    # ── Structural (chart-based) levels ───────────────────────────────────
+    # Stop anchored below the pullback structure / 5-min EMA9 (the entry
+    # thesis level), target at the session swing high/low, translated to
+    # option prices via delta.  Skips setups without room to the target.
+    struct = None
+    if settings.structural_levels_enabled:
+        stop_u, target_u = get_structural_stop_target(
+            bars_1m, direction, ema9_5m,
+            buffer_pct=settings.struct_stop_buffer_pct,
+            pullback_lookback=3,   # S2's pattern is exactly pullback + confirm bars
+        )
+        struct = compute_structural_levels(
+            direction=direction,
+            option_entry=order_price,
+            delta=selected.delta,
+            underlying_entry=current_price,
+            stop_underlying=stop_u,
+            target_underlying=target_u,
+        )
+        if not struct.ok:
+            if struct.skip_reason == "fallback":
+                logger.info(
+                    "[S2][%s] Structural levels unavailable (no delta) — "
+                    "using percentage levels", ticker,
+                )
+                struct = None
+            else:
+                logger.info(
+                    "[S2][%s] Structural gate blocked %s entry — %s",
+                    ticker, direction, struct.skip_reason,
+                )
+                return
+        else:
+            logger.info(
+                "[S2][%s] Structural levels: stop_u=%.2f target_u=%.2f R/R=%.2f "
+                "→ option SL=%.2f (−%.0f%%) TP=%.2f",
+                ticker, struct.stop_underlying, struct.target_underlying,
+                struct.reward_risk, struct.stop_price, struct.risk_pct * 100,
+                struct.tp_price,
+            )
+
+    risk_frac = struct.risk_pct if struct else settings.s2_stop_loss_pct
     budget_qty = int(settings.s2_amount_per_trade / cost_per_contract)
-    if settings.s2_risk_per_trade > 0 and settings.s2_stop_loss_pct > 0:
-        risk_per_contract = cost_per_contract * settings.s2_stop_loss_pct
+    if settings.s2_risk_per_trade > 0 and risk_frac > 0:
+        risk_per_contract = cost_per_contract * risk_frac
         risk_qty = int(settings.s2_risk_per_trade / risk_per_contract)
         qty = min(risk_qty, budget_qty)
     else:
@@ -1332,7 +1609,25 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
             return
         entry_price = ask_price
 
-    stop_price = round(entry_price * (1.0 - settings.s2_stop_loss_pct), 2)
+    # Levels from the ACTUAL fill price.  Structural: keep the underlying
+    # anchors, re-translate to option prices; fall back to pre-fill levels
+    # if the refit breaks (fill moved past a gate).
+    tp2_price: float | None = None
+    if struct:
+        refit = compute_structural_levels(
+            direction=direction,
+            option_entry=entry_price,
+            delta=selected.delta,
+            underlying_entry=current_price,
+            stop_underlying=struct.stop_underlying,
+            target_underlying=struct.target_underlying,
+        )
+        stop_price = refit.stop_price if refit.ok else struct.stop_price
+        tp2_price  = refit.tp_price   if refit.ok else struct.tp_price
+    else:
+        stop_price = round(entry_price * (1.0 - settings.s2_stop_loss_pct), 2)
+        if settings.s2_take_profit_pct > 0:
+            tp2_price = round(entry_price * (1.0 + settings.s2_take_profit_pct), 2)
 
     trade = Trade(
         symbol=ticker,
@@ -1347,14 +1642,11 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
         underlying_entry=current_price,
         stop_price=stop_price,
         tp1_price=None,
-        tp2_price=round(entry_price * (1.0 + settings.s2_take_profit_pct), 2)
-                  if settings.s2_take_profit_pct > 0 else None,
+        tp2_price=tp2_price,
     )
     db.add(trade)
     await db.commit()
-    _tp_str = (f"  TP={round(entry_price * (1.0 + settings.s2_take_profit_pct), 2):.2f}"
-               f" (+{settings.s2_take_profit_pct*100:.0f}%)"
-               if settings.s2_take_profit_pct > 0 else "  TP=EMA cross only")
+    _tp_str = (f"  TP={tp2_price:.2f}" if tp2_price else "  TP=signal exit only")
     logger.info(
         "[S2][%s] Trade OPENED: %s %s x%d @ $%.2f  SL=%.2f%s",
         ticker, direction, selected.symbol, qty, entry_price, stop_price, _tp_str,
@@ -1447,15 +1739,12 @@ async def manage_open_trades() -> None:
         for trade in trades:
             try:
                 # ── Broker-stop reconciliation ──────────────────────────────
-                # TEMPORARILY DISABLED — broker stop placement is off, so no
-                # stop_order_id will be set on new trades.  This block is kept
-                # for backward-compat with any pre-existing trades that may
-                # already have a stop_order_id from before this change.
-                # Re-enable alongside the placement block above.
-                #
-                # if trade.stop_order_id:
-                #     if await _reconcile_broker_stop(db, client, trade):
-                #         continue
+                # If the broker filled our resting stop order (e.g. while the
+                # bot's price check missed it due to spread timing), detect and
+                # record the close here before doing anything else.
+                if trade.stop_order_id and settings.broker_stop_enabled:
+                    if await _reconcile_broker_stop(db, client, trade):
+                        continue
 
                 # ── Broker-TP reconciliation ─────────────────────────────────
                 # If the broker filled our resting TP limit order (e.g. while
@@ -1499,6 +1788,65 @@ async def manage_open_trades() -> None:
                 if not bid_price or not mid_price:
                     continue  # no valid price — skip this tick
 
+                # ── Runner mode activation (S1) ─────────────────────────────
+                # When the bid reaches the runner check zone near the TP and
+                # the last completed 1-min candle still has momentum in the
+                # trade direction, waive the fixed TP and let the runner trail
+                # manage the exit.  If momentum has faded, the TP fires
+                # normally on a later tick.
+                if (
+                    settings.runner_mode_enabled
+                    and not trade.runner_mode
+                    and trade.tp2_price
+                    and bid_price >= trade.tp2_price * (1 - settings.runner_proximity_pct)
+                ):
+                    r_bars = await _get_bars(client, trade.symbol, interval="1min", lookback_days=1)
+                    if r_bars and should_activate_runner(
+                        bid_price, trade.tp2_price, r_bars, trade.direction.value
+                    ):
+                        trade.runner_mode = True
+                        trade.tp1_price = trade.tp2_price   # keep original target for reference
+                        trade.tp2_price = None              # disarm the fixed TP
+                        runner_floor = round(mid_price * (1 - settings.runner_trail_pct), 2)
+                        if trade.stop_price is None or runner_floor > trade.stop_price:
+                            trade.stop_price = runner_floor
+                        await db.commit()
+                        logger.info(
+                            "[%s] RUNNER mode activated — TP $%.2f waived on momentum, "
+                            "trailing %.0f%% below mid (stop now $%.2f)",
+                            trade.symbol, trade.tp1_price,
+                            settings.runner_trail_pct * 100, trade.stop_price,
+                        )
+                        # Cancel the broker-side resting TP — it would still
+                        # fill at the old target otherwise.
+                        if trade.tp_order_id:
+                            try:
+                                await client.cancel_order(trade.tp_order_id)
+                                trade.tp_order_id = None
+                                await db.commit()
+                            except Exception as exc:
+                                logger.warning(
+                                    "[%s] Could not cancel broker TP %s at runner "
+                                    "activation: %s — CHECK BROKER",
+                                    trade.symbol, trade.tp_order_id, exc,
+                                )
+                        # Sync the broker-side resting stop to the runner floor
+                        # now — the trailing block below only syncs on the NEXT
+                        # raise, which may not come until the price moves.
+                        if trade.stop_order_id:
+                            try:
+                                await client.modify_order(
+                                    trade.stop_order_id,
+                                    order_type="stop",
+                                    stop_price=trade.stop_price,
+                                )
+                            except Exception as exc:
+                                logger.warning(
+                                    "[%s] Could not raise broker stop %s at runner "
+                                    "activation: %s (bot-side stop is current)",
+                                    trade.symbol, trade.stop_order_id, exc,
+                                )
+
                 # ── Trailing stop: raise stop as trade moves in our favour ──
                 # Uses mid_price — we want to track genuine option appreciation,
                 # not bid bounces caused by wide spreads.
@@ -1509,6 +1857,12 @@ async def manage_open_trades() -> None:
                         current_stop=trade.stop_price,
                         entry_time=trade.entry_time,
                     )
+                    # Runner trail: ratchet the stop runner_trail_pct below the
+                    # current mid — tighter/faster than the standard trail and
+                    # active regardless of the standard trail's gain threshold.
+                    if trade.runner_mode:
+                        runner_floor = round(mid_price * (1 - settings.runner_trail_pct), 2)
+                        new_stop = max(new_stop, runner_floor)
                     if new_stop != trade.stop_price:
                         gain_pct = (
                             (mid_price - trade.entry_price)
@@ -1547,6 +1901,15 @@ async def manage_open_trades() -> None:
                 # Current underlying price (needed for VWAP_BREAK check).
                 underlying_q = await client.get_quote(trade.symbol)
 
+                # VWAP_BREAK band exit is disabled under structural levels:
+                # the 0.3% band sits INSIDE normal underlying noise, so an
+                # ordinary VWAP retest was killing valid trades.  The
+                # structural stop (anchored below pullback-low/VWAP) replaces
+                # it at a level derived from chart structure instead.
+                _vwap_for_exit = trade.vwap_at_entry or 0
+                if settings.structural_levels_enabled and settings.struct_disable_vwap_break:
+                    _vwap_for_exit = 0
+
                 exit_cond = check_exit_conditions(
                     direction=trade.direction.value,
                     entry_price=trade.entry_price,
@@ -1556,7 +1919,7 @@ async def manage_open_trades() -> None:
                     tp1_price=trade.tp1_price or 999_999,
                     tp2_price=trade.tp2_price or 999_999,
                     tp1_hit=trade.tp1_hit,
-                    vwap_at_entry=trade.vwap_at_entry or 0,
+                    vwap_at_entry=_vwap_for_exit,
                     current_underlying=underlying_q.last,
                     remaining_qty=trade.remaining_qty or trade.quantity,
                     entry_time=trade.entry_time,
@@ -1568,9 +1931,16 @@ async def manage_open_trades() -> None:
                 # Pass bid_price as the trigger quote so _close_trade records
                 # the realistically achievable exit price for P&L calculation.
                 # ── v1: all exits close 100 % of the position ──────────────
+                _s1_reason = ExitReason[exit_cond.reason]
+                # Runner-mode trades exiting via their trail get the RUNNER
+                # label so analytics can separate them from ordinary stops.
+                if trade.runner_mode and _s1_reason in (
+                    ExitReason.STOP, ExitReason.TRAILING_STOP
+                ):
+                    _s1_reason = ExitReason.RUNNER
                 await _close_trade(
                     db, client, trade,
-                    ExitReason[exit_cond.reason],
+                    _s1_reason,
                     bid_price,
                 )
 
@@ -1615,6 +1985,47 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
     if not bid_price or not mid_price:
         return
 
+    # 2b. Runner mode activation — must run BEFORE the TP check so a target
+    #     reached WITH momentum waives the TP instead of banking it.
+    #     Floor uses the BID (S2 stops trigger on bid): at activation the
+    #     floor sits runner_trail_pct below the bid, so it can never fire on
+    #     the same tick regardless of spread width.
+    if (
+        settings.runner_mode_enabled
+        and not trade.runner_mode
+        and trade.tp2_price
+        and bid_price >= trade.tp2_price * (1 - settings.runner_proximity_pct)
+    ):
+        r_bars = await _get_bars(client, trade.symbol, interval="1min", lookback_days=1)
+        if r_bars and should_activate_runner(
+            bid_price, trade.tp2_price, r_bars, trade.direction.value
+        ):
+            trade.runner_mode = True
+            trade.tp1_price = trade.tp2_price   # keep original target for reference
+            trade.tp2_price = None              # disarm the fixed TP
+            runner_floor = round(bid_price * (1 - settings.runner_trail_pct), 2)
+            if trade.stop_price is None or runner_floor > trade.stop_price:
+                trade.stop_price = runner_floor
+            await db.commit()
+            logger.info(
+                "[S2][%s] RUNNER mode activated — TP $%.2f waived on momentum, "
+                "trailing %.0f%% below bid (stop now $%.2f)",
+                trade.symbol, trade.tp1_price,
+                settings.runner_trail_pct * 100, trade.stop_price,
+            )
+
+    # 2c. Runner trail ratchet — stop follows runner_trail_pct below the bid,
+    #     only ever moving up.
+    if trade.runner_mode and trade.stop_price is not None:
+        runner_floor = round(bid_price * (1 - settings.runner_trail_pct), 2)
+        if runner_floor > trade.stop_price:
+            logger.debug(
+                "[S2][%s] Runner trail raised: $%.2f → $%.2f",
+                trade.symbol, trade.stop_price, runner_floor,
+            )
+            trade.stop_price = runner_floor
+            await db.commit()
+
     # 3. Manual take-profit override — checked against bid so it only fires when
     #    the trader can actually receive that price.  Uses TP2 field (same as S1 UI).
     if trade.tp2_price and bid_price >= trade.tp2_price:
@@ -1625,11 +2036,21 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
         await _close_trade(db, client, trade, ExitReason.TP2, bid_price)
         return
 
-    # 4. Fetch 5-min bars for EMA cross exit detection
+    # 4. Fetch 5-min bars for EMA levels (+ legacy cross exit fallback)
     bars_5m = await _get_bars(client, trade.symbol, interval="5min", lookback_days=5)
     if not bars_5m:
         logger.warning("[S2][%s] Trade %d: no 5-min bars — skipping exit check", trade.symbol, trade.id)
         return
+
+    # 4b. Structure exit inputs: 1-min bars + current 5-min EMA9.
+    #     The entry thesis is "price bounced off the 5-min EMA9" — the exit
+    #     watches 1-min closes back through that level (reacts in 2–3 min;
+    #     the old 5-min EMA9/21 cross took 10–15 min and never beat the stop).
+    bars_1m_exit: list = []
+    ema9_5m_exit: float | None = None
+    if settings.s2_structure_exit_enabled:
+        bars_1m_exit = await _get_bars(client, trade.symbol, interval="1min", lookback_days=1)
+        ema9_5m_exit = get_5min_ema9(bars_5m)
 
     # 5. Evaluate S2 exit conditions
     # mid_price → gain computation + trail level (accurate market price)
@@ -1646,6 +2067,8 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
         entry_time=trade.entry_time,
         interval_minutes=5,
         bid_price=bid_price,
+        bars_1m=bars_1m_exit or None,
+        ema9_5m=ema9_5m_exit,
     )
 
     if exit_cond is None:
@@ -1671,9 +2094,15 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
         "STOP": ExitReason.STOP,
         "TRAILING_STOP": ExitReason.TRAILING_STOP,
         "EMA_CROSS": ExitReason.EMA_CROSS,
+        "STRUCT_EXIT": ExitReason.STRUCT_EXIT,
+        "QUICK_LOSS": ExitReason.QUICK_LOSS,
         "CUTOFF": ExitReason.CUTOFF,
     }
     reason = reason_map.get(exit_cond.reason, ExitReason.STOP)
+    # Runner-mode trades exiting via their trail get the RUNNER label so
+    # analytics can separate "let it run" outcomes from ordinary stops.
+    if trade.runner_mode and reason in (ExitReason.STOP, ExitReason.TRAILING_STOP):
+        reason = ExitReason.RUNNER
     await _close_trade(db, client, trade, reason, bid_price)
 
 
@@ -1866,6 +2295,175 @@ async def _reconcile_broker_tp(db, client, trade: Trade) -> bool:
     return False
 
 
+# Exits where price is moving against the position fast — never wait on a
+# limit for these; the guaranteed market exit is worth the half-spread.
+_URGENT_EXIT_REASONS = {
+    ExitReason.STOP,
+    ExitReason.QUICK_LOSS,
+    ExitReason.VWAP_BREAK,
+}
+
+
+@dataclass
+class _ExitSellResult:
+    order: object | None = None   # order whose fill Step 2 must verify
+    was_limit: bool = False       # True = fill came from a limit (may beat the bid)
+    failed: bool = False          # API failure — leave trade OPEN and retry
+    already_flat: bool = False    # limit fill(s) closed the whole position
+    flat_price: float = 0.0       # avg fill price when already_flat
+
+
+async def _execute_exit_sell(db, client, trade: Trade, qty: int, reason: ExitReason) -> _ExitSellResult:
+    """
+    Place the sell_to_close for an exit, mirroring the entry's limit-at-mid
+    logic for PATIENT exits:
+
+      1. Fresh quote → limit sell at the mid.
+      2. Poll every 2 s up to exit_limit_timeout_seconds.
+      3. Unfilled → cancel, re-check status (a fill can race the cancel):
+           • filled           → done (was_limit=True)
+           • partially filled → book the filled slice into trade.pnl /
+                                remaining_qty, market-sell the remainder
+           • unfilled         → market-sell the full quantity
+    URGENT exits (STOP / QUICK_LOSS / VWAP_BREAK) skip straight to market.
+    """
+    async def _market(q: int):
+        return await client.place_option_order(
+            option_symbol=trade.option_symbol,
+            side="sell_to_close",
+            quantity=q,
+            order_type="market",
+        )
+
+    use_limit = (
+        settings.exit_limit_orders_enabled
+        and reason not in _URGENT_EXIT_REASONS
+    )
+    if not use_limit:
+        try:
+            return _ExitSellResult(order=await _market(qty))
+        except Exception as exc:
+            logger.error(
+                "[%s] Trade %d: market sell_to_close failed — leaving OPEN to retry. %s",
+                trade.symbol, trade.id, exc,
+            )
+            return _ExitSellResult(failed=True)
+
+    # ── Fresh quote for the mid ──────────────────────────────────────────
+    mid: float | None = None
+    try:
+        q = await client.get_option_quote(trade.option_symbol)
+        if q and q.bid and q.ask and q.bid > 0 and q.ask > 0:
+            mid = round((q.bid + q.ask) / 2, 2)
+    except Exception:
+        mid = None
+    if not mid or mid <= 0:
+        try:
+            return _ExitSellResult(order=await _market(qty))
+        except Exception as exc:
+            logger.error(
+                "[%s] Trade %d: market sell_to_close failed — leaving OPEN to retry. %s",
+                trade.symbol, trade.id, exc,
+            )
+            return _ExitSellResult(failed=True)
+
+    # ── Limit at mid ─────────────────────────────────────────────────────
+    try:
+        limit_order = await client.place_option_order(
+            option_symbol=trade.option_symbol,
+            side="sell_to_close",
+            quantity=qty,
+            order_type="limit",
+            limit_price=mid,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[%s] Trade %d: exit limit placement failed (%s) — using market",
+            trade.symbol, trade.id, exc,
+        )
+        try:
+            return _ExitSellResult(order=await _market(qty))
+        except Exception as exc2:
+            logger.error(
+                "[%s] Trade %d: market sell_to_close failed — leaving OPEN to retry. %s",
+                trade.symbol, trade.id, exc2,
+            )
+            return _ExitSellResult(failed=True)
+
+    logger.info(
+        "[%s] Trade %d: exit limit placed at mid $%.2f (%s) — waiting up to %ds",
+        trade.symbol, trade.id, mid, reason.value, settings.exit_limit_timeout_seconds,
+    )
+
+    deadline = datetime.now(tz=timezone.utc) + timedelta(
+        seconds=settings.exit_limit_timeout_seconds
+    )
+    status_str = "unknown"
+    while datetime.now(tz=timezone.utc) < deadline:
+        await asyncio.sleep(2)
+        try:
+            sd = await client.get_order_status(limit_order.order_id)
+            status_str = (sd.get("status") or "").lower()
+        except Exception:
+            status_str = "unknown"
+        if status_str == "filled":
+            logger.info(
+                "[%s] Trade %d: exit limit %s filled at mid — half-spread saved",
+                trade.symbol, trade.id, limit_order.order_id,
+            )
+            return _ExitSellResult(order=limit_order, was_limit=True)
+        if status_str in ("rejected", "canceled", "cancelled"):
+            break
+
+    # ── Timeout / rejected → cancel and resolve the race ─────────────────
+    if status_str not in ("rejected", "canceled", "cancelled"):
+        try:
+            await client.cancel_order(limit_order.order_id)
+        except Exception:
+            pass
+
+    exec_qty, avg_fill = 0, 0.0
+    try:
+        sd = await client.get_order_status(limit_order.order_id)
+        status_str = (sd.get("status") or "").lower()
+        exec_qty = int(float(sd.get("exec_quantity") or 0))
+        avg_fill = float(sd.get("avg_fill_price") or 0)
+    except Exception:
+        status_str = "unknown"
+
+    if status_str == "filled":
+        # Fill won the race against the cancel
+        return _ExitSellResult(order=limit_order, was_limit=True)
+
+    if exec_qty > 0 and avg_fill > 0:
+        # Partial fill — book the filled slice now so a retry can never
+        # double-sell it, then market-sell only what remains.
+        booked = min(exec_qty, qty)
+        trade.remaining_qty = qty - booked
+        trade.pnl = round(
+            (trade.pnl or 0) + (round(avg_fill, 2) - trade.entry_price) * booked * 100, 2
+        )
+        await db.commit()
+        logger.info(
+            "[%s] Trade %d: exit limit partially filled %d/%d @ $%.2f — "
+            "market-selling remaining %d",
+            trade.symbol, trade.id, booked, qty, avg_fill, trade.remaining_qty,
+        )
+        if trade.remaining_qty <= 0:
+            return _ExitSellResult(already_flat=True, flat_price=round(avg_fill, 2))
+
+    remaining = trade.remaining_qty if (exec_qty > 0 and avg_fill > 0) else qty
+    try:
+        return _ExitSellResult(order=await _market(remaining))
+    except Exception as exc:
+        logger.error(
+            "[%s] Trade %d: market fallback after limit timeout failed — "
+            "leaving OPEN to retry. %s",
+            trade.symbol, trade.id, exc,
+        )
+        return _ExitSellResult(failed=True)
+
+
 async def _close_trade(
     db,
     client,
@@ -1968,19 +2566,33 @@ async def _close_trade(
         await db.commit()
 
     # ── Step 1: place the sell order ────────────────────────────────────────
-    try:
-        sell_order = await client.place_option_order(
-            option_symbol=trade.option_symbol,
-            side="sell_to_close",
-            quantity=qty,
-            order_type="market",
-        )
-    except Exception as exc:
-        logger.error(
-            "[%s] Trade %d: sell_to_close API call failed — leaving OPEN to retry. %s",
-            trade.symbol, trade.id, exc,
-        )
+    # Patient exits try a limit at the mid first (same half-spread saving as
+    # entries); urgent exits (STOP / QUICK_LOSS / VWAP_BREAK) go straight to
+    # market.  See _execute_exit_sell for the timeout / partial-fill handling.
+    sell_result = await _execute_exit_sell(db, client, trade, qty, reason)
+    if sell_result.failed:
         return False
+
+    if sell_result.already_flat:
+        # Limit fill(s) closed the whole position; the P&L for those fills was
+        # already booked into trade.pnl by _execute_exit_sell.
+        trade.status      = TradeStatus.CLOSED
+        trade.exit_price  = round(sell_result.flat_price, 2)
+        trade.exit_time   = datetime.now(tz=timezone.utc)
+        trade.exit_reason = reason
+        trade.remaining_qty = 0
+        await db.commit()
+        logger.info(
+            "[%s] Trade %d CLOSED via %s @ $%.2f (exit limit)  PnL=$%.2f",
+            trade.symbol, trade.id, reason.value, trade.exit_price, trade.pnl,
+        )
+        return True
+
+    sell_order = sell_result.order
+    was_limit  = sell_result.was_limit
+    # A partial limit fill may have shrunk the open quantity — refresh it so
+    # Step 4 books P&L for exactly what this final order closes.
+    qty = trade.remaining_qty or trade.quantity
 
     # ── Step 2: confirm the sell order actually filled ──────────────────────
     # We must verify the order reached "filled" status before closing the DB
@@ -2041,7 +2653,7 @@ async def _close_trade(
         _FILL_LOWER_PCT = 0.50   # live: can lose half in fast gap-down
     if fill and exit_price:
         signed_dev = (fill - exit_price) / exit_price   # positive = fill above trigger
-        if signed_dev > _FILL_UPPER_PCT:
+        if signed_dev > _FILL_UPPER_PCT and not was_limit:
             logger.warning(
                 "[%s] Trade %d exit: fill $%.2f is %.0f%% ABOVE trigger $%.2f "
                 "— market sells can't improve above bid, using trigger quote",

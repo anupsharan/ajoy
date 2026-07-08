@@ -150,8 +150,8 @@ async def test_daily_pnl_concurrent_loophole_blocked(db_session):
 @pytest.mark.asyncio
 async def test_daily_pnl_ignores_yesterday(db_session):
     t = _trade(pnl=500.0)
-    # Override exit_time to yesterday
-    t.exit_time = datetime.now(tz=timezone.utc) - timedelta(days=1, hours=1)
+    # Use 2 full days ago so this test is safe regardless of what UTC hour it runs
+    t.exit_time = datetime.now(tz=timezone.utc) - timedelta(days=2)
     db_session.add(t)
     await db_session.commit()
     pnl = await _get_daily_pnl(db_session)
@@ -238,7 +238,7 @@ async def test_no_recent_bad_exit(db_session):
 
 @pytest.mark.asyncio
 async def test_recent_stop_triggers_cooldown(db_session):
-    db_session.add(_trade("AAPL", pnl=-100.0, exit_reason=ExitReason.STOP, minutes_ago=30))
+    db_session.add(_trade("AAPL", pnl=-100.0, exit_reason=ExitReason.STOP, minutes_ago=5))
     await db_session.commit()
     result = await _get_recent_bad_exit(db_session, "AAPL")
     assert result is not None

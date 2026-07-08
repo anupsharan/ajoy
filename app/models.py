@@ -48,6 +48,8 @@ class ExitReason(str, PyEnum):
     VWAP_BREAK = "VWAP_BREAK"
     TREND_REVERSAL = "TREND_REVERSAL"
     EMA_CROSS = "EMA_CROSS"         # S2: opposite EMA crossover on 1-min → signal-based exit
+    STRUCT_EXIT = "STRUCT_EXIT"     # S2: 1-min closes back through 5-min EMA9 — thesis invalidated
+    RUNNER = "RUNNER"               # runner-mode trail fired after TP was waived at the target
     CUTOFF = "CUTOFF"
     MANUAL = "MANUAL"
 
@@ -169,6 +171,9 @@ class Trade(Base):
     status: Mapped[TradeStatus] = mapped_column(Enum(TradeStatus), default=TradeStatus.OPEN)
     tp1_hit: Mapped[bool] = mapped_column(Boolean, default=False)
     be_stop_set: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Runner mode: TP was waived at the target because momentum was strong —
+    # the trade is now managed by the runner trail instead of a fixed target.
+    runner_mode: Mapped[bool] = mapped_column(Boolean, default=False)
     remaining_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Exit

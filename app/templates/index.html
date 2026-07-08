@@ -613,28 +613,72 @@
 
                     <!-- Stop loss input -->
                     <div class="flex items-center gap-2">
+                      <!-- $  /  % toggle -->
+                      <div style="display:inline-flex; border:1px solid #C4B5FD; border-radius:4px; overflow:hidden; font-size:0.75rem;">
+                        <button type="button"
+                                @click="editStopMode='$'; editStopPct=''"
+                                :style="editStopMode==='$' ? 'background:#7C3AED;color:#fff;' : 'background:#fff;color:#7C3AED;'"
+                                style="padding:1px 7px; border:none; cursor:pointer; font-weight:600;">$</button>
+                        <button type="button"
+                                @click="editStopMode='%'; editStopPrice=''"
+                                :style="editStopMode==='%' ? 'background:#7C3AED;color:#fff;' : 'background:#fff;color:#7C3AED;'"
+                                style="padding:1px 7px; border:none; cursor:pointer; font-weight:600;">%</button>
+                      </div>
                       <label class="text-xs text-muted" style="white-space:nowrap;">
-                        Stop Loss $
+                        Stop Loss
                         <span class="text-xs" style="color:#7C3AED;"
                               x-text="'(current: ' + fmtPrice(t.stop_price) + ')'"></span>
                       </label>
-                      <input type="number" step="0.01" min="0.01"
+                      <!-- dollar input -->
+                      <input x-show="editStopMode==='$'"
+                             type="number" step="0.01" min="0.01"
                              x-model="editStopPrice"
                              placeholder="e.g. 1.20"
                              style="width:6rem; font-family:monospace; font-size:0.85rem;" />
+                      <!-- percent input + preview -->
+                      <div x-show="editStopMode==='%'" class="flex items-center gap-1">
+                        <input type="number" step="0.1" min="0.1" max="99"
+                               x-model="editStopPct"
+                               placeholder="e.g. 20"
+                               style="width:5rem; font-family:monospace; font-size:0.85rem;" />
+                        <span class="text-xs" style="color:#7C3AED; white-space:nowrap;"
+                              x-text="stopDollarPreview(t.entry_price)"></span>
+                      </div>
                     </div>
 
                     <!-- Take profit input -->
                     <div class="flex items-center gap-2">
+                      <!-- $  /  % toggle -->
+                      <div style="display:inline-flex; border:1px solid #C4B5FD; border-radius:4px; overflow:hidden; font-size:0.75rem;">
+                        <button type="button"
+                                @click="editTpMode='$'; editTpPct=''"
+                                :style="editTpMode==='$' ? 'background:#7C3AED;color:#fff;' : 'background:#fff;color:#7C3AED;'"
+                                style="padding:1px 7px; border:none; cursor:pointer; font-weight:600;">$</button>
+                        <button type="button"
+                                @click="editTpMode='%'; editTpPrice=''"
+                                :style="editTpMode==='%' ? 'background:#7C3AED;color:#fff;' : 'background:#fff;color:#7C3AED;'"
+                                style="padding:1px 7px; border:none; cursor:pointer; font-weight:600;">%</button>
+                      </div>
                       <label class="text-xs text-muted" style="white-space:nowrap;">
-                        Take Profit $
+                        Take Profit
                         <span class="text-xs" style="color:#7C3AED;"
                               x-text="'(current: ' + fmtPrice(t.tp2_price) + ')'"></span>
                       </label>
-                      <input type="number" step="0.01" min="0.01"
+                      <!-- dollar input -->
+                      <input x-show="editTpMode==='$'"
+                             type="number" step="0.01" min="0.01"
                              x-model="editTpPrice"
                              placeholder="e.g. 2.80"
                              style="width:6rem; font-family:monospace; font-size:0.85rem;" />
+                      <!-- percent input + preview -->
+                      <div x-show="editTpMode==='%'" class="flex items-center gap-1">
+                        <input type="number" step="0.1" min="0.1"
+                               x-model="editTpPct"
+                               placeholder="e.g. 10"
+                               style="width:5rem; font-family:monospace; font-size:0.85rem;" />
+                        <span class="text-xs" style="color:#7C3AED; white-space:nowrap;"
+                              x-text="tpDollarPreview(t.entry_price)"></span>
+                      </div>
                     </div>
 
                     <!-- Save / cancel -->
@@ -657,7 +701,7 @@
                           x-text="editError"></span>
 
                     <span class="text-xs text-muted" style="margin-left:auto;">
-                      Leave a field blank to keep its current value. Stop also updates the Tradier resting order.
+                      Leave a field blank to keep its current value. % is relative to entry price. Stop also updates the Tradier resting order.
                     </span>
                   </div>
                 </td>
@@ -871,11 +915,29 @@
     </div>
 
     <template x-for="group in configGroups.filter(g => !g.id.startsWith('s2_'))" :key="group.id">
-      <div class="card mb-4" style="overflow:visible;">
+      <div>
+
+        <!-- Shared section divider — shown once, before the first shared (S1 + S2) group -->
+        <template x-if="group.id === 'structural'">
+          <div style="display:flex; align-items:center; gap:0.75rem; margin:1.75rem 0 0.75rem;">
+            <div style="flex:1; height:1px; background:linear-gradient(to right,#059669,transparent);"></div>
+            <div style="font-size:0.7rem; font-weight:700; letter-spacing:0.1em; color:#059669;
+                        text-transform:uppercase; white-space:nowrap;">
+              Shared — Applies to S1 + S2
+            </div>
+            <div style="flex:1; height:1px; background:linear-gradient(to left,#059669,transparent);"></div>
+          </div>
+        </template>
+
+      <div class="card mb-4"
+           :style="['structural','chop','runner'].includes(group.id)
+                     ? 'overflow:visible; background:#F0FDF6; border-left:3px solid #059669;'
+                     : 'overflow:visible;'">
 
         <!-- Group header -->
         <div class="card-header flex justify-between items-center">
-          <span x-text="group.label"></span>
+          <span x-text="group.label"
+                :style="['structural','chop','runner'].includes(group.id) ? 'color:#059669;' : ''"></span>
           <button
             @click="saveConfigGroup(group)"
             :disabled="configSaving[group.id] === 'saving'"
@@ -944,6 +1006,7 @@
           </template>
         </div>
 
+      </div>
       </div>
     </template>
 
@@ -1029,6 +1092,6 @@
 
 </main>
 
-<script src="/static/js/app.js?v=10"></script>
+<script src="/static/js/app.js?v=13"></script>
 </body>
 </html>

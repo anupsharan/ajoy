@@ -149,6 +149,59 @@ class Settings(BaseSettings):
     vwap_slope_lookback_bars: int = 20   # compare VWAP now vs N 1-min bars ago
     vwap_slope_threshold_pct: float = 0.05  # block if slope |Δ| exceeds this %
 
+    # ── Structural (chart-based) stop / target levels ─────────────
+    # Anchors the stop to the setup's invalidation point (pullback low /
+    # VWAP / EMA9) and the target to the session swing high/low, translated
+    # to option prices via delta.  Replaces flat percentage-of-premium levels
+    # which stop out on underlying noise and cap winners arbitrarily.
+    # Also enforces a minimum reward/risk at entry — setups without room to
+    # the target are SKIPPED instead of entered.
+    # Position size derives from the actual stop distance (risk_per_trade
+    # dollars at the structural stop).
+    structural_levels_enabled: bool = True
+    struct_stop_buffer_pct: float = 0.001    # stop sits 0.1% beyond the invalidation level
+    struct_pullback_lookback: int = 10       # S1: completed 1-min bars scanned for pullback extreme
+    struct_min_stop_pct: float = 0.08        # option stop never tighter than 8% of premium (spread noise floor)
+    struct_max_stop_pct: float = 0.30        # option stop never wider than 30% of premium (risk ceiling)
+    struct_min_reward_risk: float = 1.2      # skip entry when underlying R/R below this
+    # When structural levels are on, the S1 VWAP_BREAK band exit is disabled:
+    # the structural stop below VWAP/pullback-low replaces it at a level
+    # derived from structure instead of a fixed noise-width band.
+    struct_disable_vwap_break: bool = True
+
+    # ── Runner mode (S1 + S2) ─────────────────────────────────────
+    # A breakout through the session high is exactly when an option can pay
+    # +40% instead of the structural TP.  When the bid gets within
+    # runner_proximity_pct of the TP AND the last completed 1-min candle
+    # still shows momentum in the trade direction, the TP is waived and the
+    # trade switches to a dedicated trail (runner_trail_pct below mid,
+    # ratcheting up, never down).  Broker-side resting TP is cancelled at
+    # activation.  Exit fires with reason RUNNER.
+    # Without momentum at the target, the TP fires normally.
+    runner_mode_enabled: bool = False
+    runner_proximity_pct: float = 0.05   # arm check when bid ≥ TP × (1 − this)
+    runner_trail_pct: float = 0.08       # trail = mid × (1 − this) while in runner mode
+
+    # ── Chop-day regime filter (session range vs daily ATR) ───────
+    # Both strategies need a trending day; this measures whether today is one.
+    #   ratio = (QQQ session high − low) / QQQ daily ATR(chop_atr_period)
+    # New entries are blocked while ratio < chop_min_range_ratio.
+    # Only evaluated after chop_filter_start_time (ET) — the session range is
+    # naturally small right after the open.
+    chop_filter_enabled: bool = True
+    chop_atr_period: int = 14
+    chop_min_range_ratio: float = 0.5        # QQQ must have covered ≥50% of its normal daily range
+    chop_filter_start_time: str = "10:30"    # ET; before this the filter passes
+
+    # ── S2 structure exit (replaces 5-min EMA cross signal exit) ──
+    # Exit when the last N completed 1-min bars close back through the 5-min
+    # EMA9 (the entry thesis level) by at least the margin.  Reacts in 2–3 min
+    # vs 10–15 min for the old EMA9/21 cross, which never fired before the
+    # hard stop in live trading.
+    s2_structure_exit_enabled: bool = True
+    s2_structure_exit_bars: int = 2          # consecutive 1-min closes required
+    s2_structure_exit_margin_pct: float = 0.0005  # 0.05% beyond EMA9 to count as broken
+
     # ── VWAP exit band (separate from entry band) ─────────────────
     # For VWAP_BREAK exits, use a tighter band than the entry filter.
     # The entry band (vwap_band_pct) is wide enough to catch pullbacks.
@@ -218,6 +271,20 @@ class Settings(BaseSettings):
     # Set to 0 to disable.
     trend_reversal_cooldown_minutes: int = 30
 
+    # ── Limit order exits ─────────────────────────────────────────
+    # Entries save the half-spread with a limit at the mid; exits used to give
+    # it straight back by market-selling at the bid.  With this enabled,
+    # PATIENT exits (TP2, RUNNER, TRAILING_STOP, STRUCT_EXIT, EMA_CROSS,
+    # TREND_REVERSAL, CUTOFF, MANUAL) first try a limit at the mid for
+    # exit_limit_timeout_seconds, then cancel and fall back to a market sell.
+    # Partial limit fills are booked at their fill price and the remainder is
+    # market-sold, so P&L stays exact.
+    # URGENT exits (STOP, QUICK_LOSS, VWAP_BREAK) always go straight to
+    # market — chasing a falling market with a limit costs more than the
+    # half-spread saves.
+    exit_limit_orders_enabled: bool = True
+    exit_limit_timeout_seconds: int = 12
+
     # ── Limit order entry ─────────────────────────────────────────
     # Enter at the mid-quote (bid+ask)/2 via a limit order instead of
     # hitting the ask with a market order.  Saves the half-spread on
@@ -285,6 +352,21 @@ class Settings(BaseSettings):
     # Entry guards
     s2_volume_confirm: bool = True       # require trigger bar volume > previous bar
     s2_cooldown_minutes: int = 30        # re-entry cooldown after stop/signal exit
+    s2_cross_max_bars_old: int = 8       # block entry if EMA9/21 cross is older than N 5-min bars (0 = disabled)
+
+    # ── S2 PUT-side guards ────────────────────────────────────────
+    # Live results (Jun 8 – Jul 7 2026): S2 PUTs went 4W/14L for −$554 while
+    # S2 CALLs were net positive.  Nearly every losing PUT fired on a 5-min
+    # dip inside a larger 15-min uptrend — the old alignment gate let these
+    # through because a NEUTRAL 15-min trend allowed both directions.
+    #
+    # s2_puts_enabled=False   → disable S2 PUT entries entirely (kill switch)
+    # s2_put_15m_strict=True  → a PUT entry requires the 15-min trend to be
+    #                           confirmed BEARISH.  Neutral or missing 15-min
+    #                           data blocks the PUT (CALL behaviour unchanged:
+    #                           only a confirmed opposing trend blocks it).
+    s2_puts_enabled: bool = True
+    s2_put_15m_strict: bool = True
 
     # Risk & sizing (mirrors S1 defaults)
     s2_amount_per_trade: float = 500.0   # max premium per trade
@@ -295,6 +377,7 @@ class Settings(BaseSettings):
     # Entry filters
     s2_max_spread_pct: float = 0.10           # max bid/ask spread as % of mid (10% default)
     s2_max_trades_per_day: int = 2            # max S2 entries per symbol per day; 0 = no cap
+    s2_max_daily_loss: float = 300.0          # halt ALL S2 entries once S2-only realized loss hits this; 0 = disabled
 
     # TP price-chase guard (mirrors S1's tp_chase_pct, S2-specific).
     # After a profitable S2 exit today in the same direction, block re-entry
@@ -308,7 +391,29 @@ class Settings(BaseSettings):
     s2_take_profit_pct: float = 0.0            # auto-TP at entry: 0 = disabled (exit on EMA cross only); 0.14 = +14%
     s2_breakeven_pct: float = 0.10             # move stop to entry at +10%
     s2_trail_pct: float = 0.20                 # start trailing at +20%
-    s2_trail_from_current_pct: float = 0.05    # trail = current × (1 - 0.05)
+    # Trail distance below current mid.  Never set this below ~0.05: exits
+    # fill at the BID (5–10% below mid on cheap options), so a 1% trail
+    # converts winners into net losses on the first tick of noise.
+    s2_trail_from_current_pct: float = 0.08    # trail = current × (1 - 0.08)
+
+    # ── S2 lock-profit at breakeven ───────────────────────────────
+    # When the breakeven stop fires, raise the stop to entry × (1 + this)
+    # instead of plain entry price.  Covers the bid-ask spread cost so the
+    # trade is still green after commission even if the stop fires at the bid.
+    # e.g. entry $3.00, lock_profit_pct=0.03 → stop raised to $3.09 (+3%)
+    # Set to 0.0 to restore original behaviour (stop = entry price exactly).
+    s2_trailing_stop_lock_profit_pct: float = 0.03   # 3% above entry at Stage 1
+
+    # ── S2 quick-loss early exit ──────────────────────────────────
+    # If the option drops s2_quick_loss_pct within the first
+    # s2_quick_loss_max_minutes of the trade, exit immediately.
+    # Catches wrong-direction entries before full hard-stop loss compounds.
+    # Example: entry $3.00, pct=0.12 → exit fires at $2.64 in first 5 min,
+    #          saving ~$108 vs waiting for the -21% hard stop at $2.37.
+    # Set s2_quick_loss_pct=0.0 to disable.
+    s2_quick_loss_pct: float = 0.12            # exit if option drops ≥12% in the window
+    s2_quick_loss_min_hold_minutes: int = 0    # quiet period before quick-loss arms (0 = immediate)
+    s2_quick_loss_max_minutes: int = 5         # window: only active in first N minutes
 
     # Trading window (ET)
     s2_trading_start_time: str = "09:35"

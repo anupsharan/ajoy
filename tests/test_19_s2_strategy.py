@@ -24,7 +24,7 @@ Timestamp note:
   VWAP tests need today's date and use 9 AM ET morning hours (well before any run time).
 """
 import pytest
-from datetime import datetime, timedelta, date as _date
+from datetime import datetime, timedelta, timezone, date as _date
 
 from tests.conftest import make_bar, rising_bars, falling_bars, flat_bars
 from app.services.strategy_ema import (
@@ -824,9 +824,11 @@ class TestCheckS2ExitConditions:
             stop_price=round(entry * 0.88, 2),
             be_stop_set=False,
         )
-        # Breakeven fires (unless trail threshold also crossed and takes priority)
+        # Breakeven fires: new_stop = entry × (1 + lock_profit_pct), NOT plain entry.
+        # This intentional lock-profit behavior was added in the S2 breakeven refactor.
         if result is not None and not result.close_all:
-            assert result.new_stop == round(entry, 2)
+            lock_pct = settings.s2_trailing_stop_lock_profit_pct
+            assert result.new_stop == round(entry * (1 + lock_pct), 2)
 
     def test_trail_stop_raised_above_current_stop(self):
         """
@@ -874,3 +876,167 @@ class TestCheckS2ExitConditions:
         )
         assert result is not None
         assert result.close_all is True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Quick-loss early exit
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestS2QuickLoss:
+    """
+    S2_QUICK_LOSS_PCT fires when the option drops >= threshold in the first
+    S2_QUICK_LOSS_MAX_MINUTES of the trade.
+    """
+
+    _ENTRY = 3.00
+    _FLAT_BARS = _flat_5m(price=150.0, n=25)
+
+    def _state(self, current, held_seconds=60, entry=None):
+        entry = entry or self._ENTRY
+        # entry_time must be relative to NOW — the quick-loss window check compares
+        # against datetime.now(utc), not a fixed date.
+        entry_time = datetime.now(tz=timezone.utc) - timedelta(seconds=held_seconds)
+        return dict(
+            bars=self._FLAT_BARS,
+            direction="CALL",
+            entry_price=entry,
+            current_price=current,
+            stop_price=round(entry * 0.79, 2),
+            be_stop_set=False,
+            entry_time=entry_time,
+        )
+
+    def test_quick_loss_fires_within_window(self):
+        """Drop >= quick_loss_pct after min_hold_minutes and within max_minutes → QUICK_LOSS."""
+        from app.config import settings
+        threshold = settings.s2_quick_loss_pct
+        # Use held_seconds just past min_hold and well within max_minutes window
+        min_hold_sec = settings.s2_quick_loss_min_hold_minutes * 60 + 30
+        current = round(self._ENTRY * (1 - threshold - 0.01), 2)
+        result = check_s2_exit_conditions(**self._state(current=current, held_seconds=min_hold_sec))
+        assert result is not None
+        assert result.reason == "QUICK_LOSS"
+        assert result.close_all is True
+
+    def test_quick_loss_does_not_fire_after_window(self):
+        """Same loss but > max_minutes into trade → quick-loss window expired."""
+        from app.config import settings
+        threshold = settings.s2_quick_loss_pct
+        current = round(self._ENTRY * (1 - threshold - 0.01), 2)
+        # held_seconds must be past max_minutes to put us outside the window
+        past_window_sec = settings.s2_quick_loss_max_minutes * 60 + 60
+        result = check_s2_exit_conditions(**self._state(current=current, held_seconds=past_window_sec))
+        if result is not None:
+            assert result.reason != "QUICK_LOSS"
+
+    def test_quick_loss_does_not_fire_below_threshold(self):
+        """Drop < quick_loss_pct within window → no quick-loss."""
+        from app.config import settings
+        threshold = settings.s2_quick_loss_pct
+        current = round(self._ENTRY * (1 - threshold + 0.02), 2)
+        result = check_s2_exit_conditions(**self._state(current=current, held_seconds=60))
+        if result is not None:
+            assert result.reason != "QUICK_LOSS"
+
+    def test_quick_loss_not_fire_without_entry_time(self):
+        """No entry_time supplied → quick-loss can never fire (no time reference)."""
+        from app.config import settings
+        threshold = settings.s2_quick_loss_pct
+        current = round(self._ENTRY * (1 - threshold - 0.05), 2)
+        result = check_s2_exit_conditions(
+            bars=self._FLAT_BARS,
+            direction="CALL",
+            entry_price=self._ENTRY,
+            current_price=current,
+            stop_price=round(self._ENTRY * 0.79, 2),
+            be_stop_set=False,
+        )
+        if result is not None:
+            assert result.reason != "QUICK_LOSS"
+
+    def test_quick_loss_fires_at_threshold(self):
+        """Drop at quick_loss_pct → fires (held_seconds past min_hold but within window).
+        Subtract 1 cent from the threshold price so FP arithmetic doesn't make
+        (entry - current) / entry land fractionally below the threshold."""
+        from app.config import settings
+        threshold = settings.s2_quick_loss_pct
+        # e.g. entry=3.00, threshold=0.19 → threshold_price≈2.43; use 2.42
+        current = round(self._ENTRY * (1 - threshold), 2) - 0.01
+        min_hold_sec = settings.s2_quick_loss_min_hold_minutes * 60 + 30
+        result = check_s2_exit_conditions(**self._state(current=current, held_seconds=min_hold_sec))
+        assert result is not None
+        assert result.reason == "QUICK_LOSS"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Lock-profit at breakeven (Stage 1 trailing stop)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestS2LockProfit:
+    """
+    When the breakeven threshold is hit, the stop should move to
+    entry × (1 + s2_trailing_stop_lock_profit_pct) — not plain entry price.
+    """
+
+    _FLAT_BARS = _flat_5m(price=150.0, n=25)
+
+    def test_breakeven_stop_is_above_entry(self):
+        """Stage 1 stop = entry × (1 + lock_pct), which is > entry."""
+        from app.config import settings
+        entry   = 5.00
+        lock_pct = settings.s2_trailing_stop_lock_profit_pct
+        be_pct   = settings.s2_breakeven_pct
+        current  = round(entry * (1 + be_pct + 0.01), 2)
+
+        result = check_s2_exit_conditions(
+            bars=self._FLAT_BARS,
+            direction="CALL",
+            entry_price=entry,
+            current_price=current,
+            stop_price=round(entry * (1 - settings.s2_stop_loss_pct), 2),
+            be_stop_set=False,
+        )
+        assert result is not None
+        assert result.close_all is False
+        expected = round(entry * (1 + lock_pct), 2)
+        assert result.new_stop == expected, (
+            f"Expected new_stop={expected} (entry + {lock_pct*100:.0f}%), got {result.new_stop}"
+        )
+
+    def test_lock_profit_stop_strictly_above_entry(self):
+        """Confirm new_stop > entry_price — ensures net-positive exit after spread."""
+        from app.config import settings
+        entry   = 3.00
+        be_pct  = settings.s2_breakeven_pct
+        current = round(entry * (1 + be_pct + 0.01), 2)
+
+        result = check_s2_exit_conditions(
+            bars=self._FLAT_BARS,
+            direction="CALL",
+            entry_price=entry,
+            current_price=current,
+            stop_price=round(entry * (1 - settings.s2_stop_loss_pct), 2),
+            be_stop_set=False,
+        )
+        assert result is not None
+        assert result.close_all is False
+        assert result.new_stop > entry, "Lock-profit stop must be strictly above entry"
+
+    def test_lock_profit_not_set_twice(self):
+        """be_stop_set=True → breakeven step is skipped (idempotent)."""
+        from app.config import settings
+        entry    = 5.00
+        be_pct   = settings.s2_breakeven_pct
+        current  = round(entry * (1 + be_pct + 0.01), 2)
+        locked_stop = round(entry * (1 + settings.s2_trailing_stop_lock_profit_pct), 2)
+
+        result = check_s2_exit_conditions(
+            bars=self._FLAT_BARS,
+            direction="CALL",
+            entry_price=entry,
+            current_price=current,
+            stop_price=locked_stop,
+            be_stop_set=True,
+        )
+        if result is not None and not result.close_all:
+            assert result.new_stop is None or result.new_stop > locked_stop

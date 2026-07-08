@@ -297,6 +297,264 @@ def is_ema_trend_confirmed(
 
 
 # ---------------------------------------------------------------------------
+# Structural (chart-based) stop / target levels
+#
+# WHY: percentage-of-premium levels (−19% / +22%) are disconnected from the
+# chart.  A 0.25% noise wiggle in the underlying — fully consistent with a
+# valid setup — becomes −19% of premium via gamma and stops the trade out.
+# Structural levels anchor the stop to the setup's actual invalidation point
+# (pullback low / VWAP / EMA9) and the target to real resistance (session
+# swing high/low), then translate both to option prices via delta.
+# Position size derives from the actual stop distance, so every trade still
+# risks ~risk_per_trade dollars.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class StructuralLevels:
+    ok: bool                    # True = levels valid, trade allowed
+    stop_price: float = 0.0     # option-price stop
+    tp_price: float = 0.0       # option-price target
+    stop_underlying: float = 0.0
+    target_underlying: float = 0.0
+    risk_pct: float = 0.0       # option stop distance as fraction of entry
+    reward_risk: float = 0.0    # underlying-terms R/R
+    skip_reason: str = ""       # set when ok=False
+
+
+def get_structural_stop_target(
+    bars_1m: list[Bar],
+    direction: str,
+    anchor: float,
+    buffer_pct: float = 0.001,
+    pullback_lookback: int = 10,
+) -> tuple[float, float]:
+    """
+    Derive the underlying stop and target levels from chart structure.
+
+    anchor — the level the setup bounced off (S1: session VWAP, S2: 5-min EMA9).
+
+    CALL: stop   = min(pullback low of last N completed bars, anchor) × (1 − buffer)
+          target = session high so far (the prior swing high the bounce is
+                   trying to retest/break)
+    PUT:  mirror image.
+
+    Returns (stop_underlying, target_underlying); (0.0, 0.0) if insufficient data.
+    """
+    if not bars_1m or anchor <= 0:
+        return 0.0, 0.0
+
+    # Session bars only (today) — target must be *today's* swing, not yesterday's
+    last_day = bars_1m[-1].time.date()
+    session = [b for b in bars_1m if b.time.date() == last_day]
+    if len(session) < 3:
+        return 0.0, 0.0
+
+    recent = session[-(pullback_lookback + 1):-1] or session  # completed bars
+    if direction == "CALL":
+        pullback_low = min(b.low for b in recent)
+        stop_u = min(pullback_low, anchor) * (1 - buffer_pct)
+        target_u = max(b.high for b in session)
+    else:  # PUT
+        pullback_high = max(b.high for b in recent)
+        stop_u = max(pullback_high, anchor) * (1 + buffer_pct)
+        target_u = min(b.low for b in session)
+    return stop_u, target_u
+
+
+def compute_structural_levels(
+    *,
+    direction: str,
+    option_entry: float,
+    delta: float | None,
+    underlying_entry: float,
+    stop_underlying: float,
+    target_underlying: float,
+    min_stop_pct: float | None = None,
+    max_stop_pct: float | None = None,
+    min_reward_risk: float | None = None,
+) -> StructuralLevels:
+    """
+    Translate underlying-based stop/target into option-price levels via delta.
+
+      option_stop = entry − |delta| × (underlying_entry − stop_underlying)   [CALL]
+      option_tp   = entry + |delta| × (target_underlying − underlying_entry) [CALL]
+      (PUT mirrored)
+
+    Gates:
+      • reward/risk (in underlying terms) must be ≥ min_reward_risk, else the
+        trade is skipped — this is what enforces payoff asymmetry.  A stock
+        sitting just under its session high has "no room" and is skipped
+        instead of entered with a 3-cent target.
+      • option stop distance is clamped to [min_stop_pct, max_stop_pct] of
+        premium: never tighter than spread noise, never wider than the max
+        premium loss we tolerate.
+
+    Returns StructuralLevels(ok=False, skip_reason=...) when the setup fails a
+    gate, and ok=False with skip_reason="fallback" when inputs are unusable
+    (missing delta etc.) — callers should fall back to percentage levels for
+    "fallback" but SKIP the trade for other reasons.
+    """
+    min_stop_pct    = min_stop_pct    if min_stop_pct    is not None else settings.struct_min_stop_pct
+    max_stop_pct    = max_stop_pct    if max_stop_pct    is not None else settings.struct_max_stop_pct
+    min_reward_risk = min_reward_risk if min_reward_risk is not None else settings.struct_min_reward_risk
+
+    if (
+        option_entry <= 0
+        or underlying_entry <= 0
+        or stop_underlying <= 0
+        or target_underlying <= 0
+        or delta is None
+        or abs(delta) < 0.05
+    ):
+        return StructuralLevels(ok=False, skip_reason="fallback")
+
+    d = abs(delta)
+    if direction == "CALL":
+        stop_dist = underlying_entry - stop_underlying
+        tp_dist   = target_underlying - underlying_entry
+    else:  # PUT
+        stop_dist = stop_underlying - underlying_entry
+        tp_dist   = underlying_entry - target_underlying
+
+    if stop_dist <= 0:
+        # Price is already beyond the invalidation level — setup is broken
+        return StructuralLevels(ok=False, skip_reason="price beyond invalidation level")
+    if tp_dist <= 0:
+        # Already at/past the session extreme — no measurable room to target
+        return StructuralLevels(ok=False, skip_reason="no room to target (at session extreme)")
+
+    reward_risk = tp_dist / stop_dist
+    if reward_risk < min_reward_risk:
+        return StructuralLevels(
+            ok=False,
+            reward_risk=round(reward_risk, 2),
+            skip_reason=(
+                f"reward/risk {reward_risk:.2f} < {min_reward_risk:.2f} "
+                f"(stop {stop_dist:.2f} vs target {tp_dist:.2f} in underlying)"
+            ),
+        )
+
+    # Translate to option prices via delta (per-share, same units as premium)
+    risk_pct = (d * stop_dist) / option_entry
+    # Clamp: never tighter than min (spread noise), never wider than max
+    risk_pct = max(min_stop_pct, min(risk_pct, max_stop_pct))
+
+    stop_price = round(option_entry * (1 - risk_pct), 2)
+    tp_price   = round(option_entry + d * tp_dist, 2)
+
+    # Degenerate rounding guards for very cheap options
+    if stop_price >= option_entry:
+        stop_price = round(option_entry * (1 - min_stop_pct), 2)
+    if tp_price <= option_entry:
+        return StructuralLevels(ok=False, skip_reason="target rounds to ≤ entry (premium too small)")
+
+    return StructuralLevels(
+        ok=True,
+        stop_price=stop_price,
+        tp_price=tp_price,
+        stop_underlying=round(stop_underlying, 4),
+        target_underlying=round(target_underlying, 4),
+        risk_pct=round(risk_pct, 4),
+        reward_risk=round(reward_risk, 2),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Runner mode — waive the TP at the target when momentum is strong
+# ---------------------------------------------------------------------------
+
+def should_activate_runner(
+    bid_price: float,
+    tp_price: float | None,
+    bars_1m: list[Bar],
+    direction: str,
+    proximity_pct: float | None = None,
+) -> bool:
+    """
+    Return True when the trade should switch to runner mode:
+
+      1. runner check zone: bid ≥ TP × (1 − proximity_pct)  — price is at or
+         approaching the structural target
+      2. momentum: the last completed 1-min candle is still pushing in the
+         trade direction (green + rising close for CALL, red + falling for PUT
+         — same definition as the L3 entry momentum candle)
+
+    If momentum has faded by the time price reaches the target, this returns
+    False and the normal TP fires — banking the planned profit.  Only a
+    target reached WITH momentum waives the TP in favour of the runner trail.
+    """
+    proximity_pct = proximity_pct if proximity_pct is not None else settings.runner_proximity_pct
+
+    if not tp_price or tp_price <= 0 or bid_price <= 0:
+        return False
+    if bid_price < tp_price * (1 - proximity_pct):
+        return False  # not close enough to the target yet
+
+    return check_momentum_candle(bars_1m, direction)
+
+
+# ---------------------------------------------------------------------------
+# Chop-day regime filter — session range vs daily ATR
+#
+# WHY: both strategies assume a trending day but nothing measured whether
+# today is one.  Live results: profitable in the trending week (+$289),
+# heavily negative in choppy weeks (−$380 each).  If QQQ's session range is
+# a small fraction of its normal daily range, the day is chop — pullback-
+# continuation setups have no follow-through and every exit mechanism bleeds.
+# ---------------------------------------------------------------------------
+
+def calculate_atr(daily_bars: list[Bar], period: int = 14) -> float:
+    """
+    Average True Range over the last `period` daily bars (simple average).
+    TR = max(high − low, |high − prev_close|, |low − prev_close|).
+    Returns 0.0 with insufficient data.
+    """
+    if len(daily_bars) < period + 1:
+        return 0.0
+    trs: list[float] = []
+    for prev, cur in zip(daily_bars[:-1], daily_bars[1:]):
+        tr = max(
+            cur.high - cur.low,
+            abs(cur.high - prev.close),
+            abs(cur.low - prev.close),
+        )
+        trs.append(tr)
+    recent = trs[-period:]
+    return sum(recent) / len(recent) if recent else 0.0
+
+
+def check_chop_regime(
+    qqq_bars_1m: list[Bar],
+    daily_atr: float,
+    min_ratio: float | None = None,
+) -> tuple[bool, float]:
+    """
+    Return (is_chop, range_ratio).
+
+      range_ratio = (today's session high − low) / daily ATR
+
+    is_chop=True when range_ratio < min_ratio — the market hasn't moved enough
+    relative to its normal daily range to support continuation trades.
+    Returns (False, 0.0) when data is missing — never block on missing data.
+
+    Callers should only apply this after chop_filter_start_time: early in the
+    session the range is naturally still small.
+    """
+    min_ratio = min_ratio if min_ratio is not None else settings.chop_min_range_ratio
+    if not qqq_bars_1m or daily_atr <= 0:
+        return False, 0.0
+
+    last_day = qqq_bars_1m[-1].time.date()
+    session = [b for b in qqq_bars_1m if b.time.date() == last_day]
+    if not session:
+        return False, 0.0
+
+    session_range = max(b.high for b in session) - min(b.low for b in session)
+    ratio = session_range / daily_atr
+    return ratio < min_ratio, round(ratio, 3)
+
+
+# ---------------------------------------------------------------------------
 # Adaptive VWAP band — QQQ-based
 # ---------------------------------------------------------------------------
 

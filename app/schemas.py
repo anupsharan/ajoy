@@ -176,6 +176,7 @@ class TradeOut(BaseModel):
     status: TradeStatus
     tp1_hit: bool
     be_stop_set: bool
+    runner_mode: bool = False
     remaining_qty: Optional[int]
     exit_price: Optional[float]
     exit_time: Optional[datetime]

@@ -91,7 +91,7 @@ async def patch_trade_pnl(trade_id: int, exit_price: float, pnl: float):
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    response = templates.TemplateResponse("index.html", {"request": request})
+    response = templates.TemplateResponse(request, "index.html")
     # Never cache the HTML shell — the browser must always fetch fresh markup
     # so that versioned app.js?vN cache-busts work correctly.
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"

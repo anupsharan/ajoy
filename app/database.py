@@ -71,6 +71,10 @@ async def _migrate(conn) -> None:
         "DELETE FROM symbols WHERE id NOT IN (SELECT MIN(id) FROM symbols GROUP BY ticker)",
         # Re-add a unique index on ticker now that duplicates are gone.
         "CREATE UNIQUE INDEX IF NOT EXISTS uix_symbols_ticker ON symbols (ticker)",
+
+        # v8 → v9: runner mode — TP waived at the target when momentum is
+        # strong; the trade is managed by the runner trail from that point on.
+        "ALTER TABLE trades ADD COLUMN runner_mode BOOLEAN NOT NULL DEFAULT 0",
     ]
     for stmt in migrations:
         try:

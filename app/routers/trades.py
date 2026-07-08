@@ -11,13 +11,95 @@ from app.database import get_db
 from app.models import Direction, ExitReason, Trade, TradeStatus
 from app.schemas import CloseTradeRequest, TradeOut, TradeWithLivePnL
 from app.services.tradier import get_tradier_client
-from app.services.strategy import compute_trade_levels, ema_direction
+from app.services.strategy import calculate_ema, completed_bars, compute_trade_levels, ema_direction
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
 
 import logging as _logging
 _enrich_logger = _logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# S2 EMA-based trend + thesis helper (cache-free, display only)
+# ---------------------------------------------------------------------------
+
+def _s2_ema_thesis(
+    bars_5m: list,
+    direction: str,
+    ema_fast: int = 9,
+    ema_slow: int = 21,
+) -> tuple[str, str]:
+    """
+    Derive TREND and THESIS for an S2 (EMA Pullback) trade from 5-min bars.
+
+    TREND:
+      "bullish"  — EMA9 > EMA21 and EMA9 slope rising
+      "bearish"  — EMA9 < EMA21 and EMA9 slope falling
+      "neutral"  — anything else (crossing, flat, insufficient data)
+
+    THESIS — "is the S2 setup still alive?":
+      "intact"   — EMA9/21 still crossed in trade direction AND gap stable/growing
+      "at_risk"  — EMA9/21 still crossed in direction BUT gap narrowing (converging)
+      "broken"   — EMA9/21 have crossed to the OPPOSITE direction
+
+    Deliberately does NOT touch the scheduler's _trend_cache so display
+    reads and scanner writes remain independent.
+    """
+    bars = completed_bars(bars_5m, interval_minutes=5)
+    if len(bars) < ema_slow + 2:
+        return "neutral", "intact"   # not enough history — don't alarm
+
+    closes = [b.close for b in bars]
+
+    ema9_vals  = calculate_ema(closes, ema_fast)
+    ema21_vals = calculate_ema(closes, ema_slow)
+
+    valid9  = [v for v in ema9_vals  if v == v]   # strip NaN
+    valid21 = [v for v in ema21_vals if v == v]
+
+    if len(valid9) < 2 or len(valid21) < 2:
+        return "neutral", "intact"
+
+    ema9_prev,  ema9_now  = valid9[-2],  valid9[-1]
+    ema21_prev, ema21_now = valid21[-2], valid21[-1]
+
+    # ── TREND ─────────────────────────────────────────────────────────────────
+    if ema9_now > ema21_now and ema9_now > ema9_prev:
+        trend = "bullish"
+    elif ema9_now < ema21_now and ema9_now < ema9_prev:
+        trend = "bearish"
+    else:
+        trend = "neutral"
+
+    # ── THESIS ────────────────────────────────────────────────────────────────
+    # Mirrors the S2 entry condition: the entry requires EMA9/21 cross AND slopes
+    # both aligned.  Thesis uses the same slope check so "intact" == entry still valid.
+    #
+    # gap_now > 0 → EMA9 above EMA21 (CALL-aligned); < 0 → EMA9 below (PUT-aligned)
+    gap_now = ema9_now - ema21_now
+
+    ema9_slope_up   = ema9_now  > ema9_prev
+    ema21_slope_up  = ema21_now > ema21_prev
+    ema9_slope_down  = ema9_now  < ema9_prev
+    ema21_slope_down = ema21_now < ema21_prev
+
+    if direction == "CALL":
+        if gap_now <= 0:
+            thesis = "broken"    # EMA cross flipped — trade direction gone
+        elif ema9_slope_up or ema21_slope_up:
+            thesis = "intact"    # cross alive, at least one EMA still rising
+        else:
+            thesis = "at_risk"   # cross alive but both EMAs losing upward momentum
+    else:  # PUT
+        if gap_now >= 0:
+            thesis = "broken"    # EMA cross flipped — trade direction gone
+        elif ema9_slope_down or ema21_slope_down:
+            thesis = "intact"    # cross alive, at least one EMA still falling
+        else:
+            thesis = "at_risk"   # cross alive but both EMAs losing downward momentum
+
+    return trend, thesis
 
 
 async def _enrich_with_live_pnl(trade: Trade) -> TradeWithLivePnL:
@@ -77,78 +159,109 @@ async def _enrich_with_live_pnl(trade: Trade) -> TradeWithLivePnL:
             "underlying quote failed for %s: %s", trade.symbol, exc, exc_info=True,
         )
 
-    # ── Section 3: 15-min bars → stock trend ──────────────────────────────
+    # ── Pre-compute strategy identity and direction once ─────────────────
+    strategy_name = (trade.strategy_name or "").lower()
+    is_s2 = strategy_name == "ema_cross"
+    direction_val = (
+        trade.direction.value
+        if hasattr(trade.direction, "value")
+        else str(trade.direction)
+    )
+
+    # ── Section 3: stock trend ────────────────────────────────────────────
+    # S1 (vwap_pullback): 15-min EMA direction — same timeframe the entry uses.
+    # S2 (ema_cross):     5-min EMA9/21 relationship — the timeframe S2 actually
+    #                     trades on.  Signals pre-computed here so Section 4 can
+    #                     reuse them without a second bar fetch.
+    _s2_signals: tuple[str, str] | None = None   # (trend, thesis) cached for Section 4
+    _bars_5m: list = []
+
     try:
-        bars_15m = await client.get_intraday_bars(
-            trade.symbol, interval="15min",
-            lookback_days=_cfg.trend_lookback_days,
-        )
-        if bars_15m:
-            enriched.trend = ema_direction(
-                bars_15m,
-                period=_cfg.ema_period,
-                live_price=underlying_last,  # None → falls back to last closed bar
+        if is_s2:
+            _bars_5m = await client.get_intraday_bars(
+                trade.symbol, interval="5min", lookback_days=3,
             )
+            if _bars_5m:
+                _s2_signals = _s2_ema_thesis(
+                    _bars_5m, direction_val,
+                    ema_fast=_cfg.s2_ema_fast,
+                    ema_slow=_cfg.s2_ema_slow,
+                )
+                enriched.trend = _s2_signals[0]
+        else:
+            bars_15m = await client.get_intraday_bars(
+                trade.symbol, interval="15min",
+                lookback_days=_cfg.trend_lookback_days,
+            )
+            if bars_15m:
+                enriched.trend = ema_direction(
+                    bars_15m,
+                    period=_cfg.ema_period,
+                    live_price=underlying_last,
+                )
     except Exception as exc:
         _enrich_logger.warning(
             "trend enrichment failed for %s: %s", trade.symbol, exc, exc_info=True,
         )
 
-    # ── Section 4: thesis status — is the stock still on the right VWAP side?
-    # This is the key question for "hold vs close manually".  It is intentionally
-    # independent of the option P&L, which is dominated by theta decay on near-
-    # expiry options and is a misleading signal for the first 60-90 min of a trade.
+    # ── Section 4: thesis status ──────────────────────────────────────────
     #
-    # Status levels:
-    #   intact  — stock firmly on correct VWAP side (>0.2% clear)  → let bot manage
-    #   at_risk — stock within 0.2% of VWAP (could flip either way) → watch closely
-    #   broken  — stock crossed to the WRONG VWAP side              → consider closing
+    # S1 (VWAP Pullback) — VWAP-based:
+    #   intact  = stock on correct side of VWAP (any margin → entry assumption holds)
+    #   at_risk = stock crossed VWAP but within the exit band (0.3%) — bot hasn't
+    #             fired VWAP_BREAK yet but it could at any tick → watch closely
+    #   broken  = stock is beyond the exit band on the wrong side — bot exit should
+    #             already be firing → consider manual close
+    #
+    # S2 (EMA Pullback) — EMA-based (VWAP is irrelevant for this strategy):
+    #   intact  = EMA9/21 still crossed in trade direction AND gap stable or widening
+    #   at_risk = EMA9/21 still crossed in direction BUT gap narrowing (trend weakening)
+    #   broken  = EMA9/21 have crossed to the OPPOSITE direction — S2 exit should fire
     try:
-        bars_1m = await client.get_intraday_bars(
-            trade.symbol, interval="1min", lookback_days=1,
-        )
-        vwap_now: Optional[float] = None
-        if bars_1m:
-            total_vol = sum(b.volume for b in bars_1m if b.volume and b.volume > 0)
-            if total_vol > 0:
-                tp_vol = sum(
-                    (b.high + b.low + b.close) / 3.0 * b.volume
-                    for b in bars_1m if b.volume and b.volume > 0
-                )
-                vwap_now = round(tp_vol / total_vol, 2)
-
-        # Fall back to VWAP stored at entry time if live bars unavailable
-        if not vwap_now and trade.vwap_at_entry:
-            vwap_now = trade.vwap_at_entry
-
-        enriched.vwap_current = vwap_now
-
-        if vwap_now and underlying_last:
-            diff_pct = (underlying_last - vwap_now) / vwap_now  # + = above, − = below
-            near_threshold = 0.002   # within 0.2% counts as "at risk"
-
-            direction_val = (
-                trade.direction.value
-                if hasattr(trade.direction, "value")
-                else str(trade.direction)
+        if is_s2:
+            # Thesis already computed above — apply it directly.
+            if _s2_signals is not None:
+                enriched.thesis_status = _s2_signals[1]
+            # vwap_current intentionally left None for S2 (not relevant)
+        else:
+            # S1: VWAP thesis with exit-band-aligned thresholds
+            bars_1m = await client.get_intraday_bars(
+                trade.symbol, interval="1min", lookback_days=1,
             )
+            vwap_now: Optional[float] = None
+            if bars_1m:
+                total_vol = sum(b.volume for b in bars_1m if b.volume and b.volume > 0)
+                if total_vol > 0:
+                    tp_vol = sum(
+                        (b.high + b.low + b.close) / 3.0 * b.volume
+                        for b in bars_1m if b.volume and b.volume > 0
+                    )
+                    vwap_now = round(tp_vol / total_vol, 2)
 
-            if direction_val == "CALL":
-                # CALL thesis: stock should be above VWAP
-                if diff_pct > near_threshold:
-                    enriched.thesis_status = "intact"
-                elif diff_pct >= -near_threshold:
-                    enriched.thesis_status = "at_risk"
-                else:
-                    enriched.thesis_status = "broken"
-            else:
-                # PUT thesis: stock should be below VWAP
-                if diff_pct < -near_threshold:
-                    enriched.thesis_status = "intact"
-                elif diff_pct <= near_threshold:
-                    enriched.thesis_status = "at_risk"
-                else:
-                    enriched.thesis_status = "broken"
+            # Fall back to VWAP stored at entry time if live bars unavailable
+            if not vwap_now and trade.vwap_at_entry:
+                vwap_now = trade.vwap_at_entry
+
+            enriched.vwap_current = vwap_now
+
+            if vwap_now and underlying_last:
+                diff_pct = (underlying_last - vwap_now) / vwap_now  # + = above, − = below
+                exit_band = _cfg.vwap_exit_band_pct   # 0.003 = 0.3%
+
+                if direction_val == "CALL":
+                    if diff_pct >= 0:
+                        enriched.thesis_status = "intact"    # above VWAP — all good
+                    elif diff_pct >= -exit_band:
+                        enriched.thesis_status = "at_risk"   # crossed VWAP, within exit band
+                    else:
+                        enriched.thesis_status = "broken"    # past exit band — bot exit imminent
+                else:  # PUT
+                    if diff_pct <= 0:
+                        enriched.thesis_status = "intact"    # below VWAP — all good
+                    elif diff_pct <= exit_band:
+                        enriched.thesis_status = "at_risk"   # crossed VWAP, within exit band
+                    else:
+                        enriched.thesis_status = "broken"    # past exit band — bot exit imminent
     except Exception as exc:
         _enrich_logger.warning(
             "thesis enrichment failed for %s: %s", trade.symbol, exc, exc_info=True,
@@ -596,32 +709,35 @@ async def update_trade_levels(
     # ── Update Tradier broker stop order (if stop changed) ───────────────
     from app.config import settings as _cfg
 
-    if stop is not None and _cfg.broker_stop_enabled and trade.stop_order_id:
+    if stop is not None and _cfg.broker_stop_enabled:
         client = get_tradier_client()
-        modified = False
-        try:
-            await client.modify_order(trade.stop_order_id, stop_price=stop)
-            modified = True
-            _enrich_logger.info(
-                "[%s] Trade %d broker stop modified to $%.2f (order %s)",
-                trade.symbol, trade.id, stop, trade.stop_order_id,
-            )
-        except Exception as exc:
-            _enrich_logger.warning(
-                "[%s] Trade %d modify_order failed (%s) — canceling and re-placing stop",
-                trade.symbol, trade.id, exc,
-            )
 
-        if not modified:
-            # cancel old stop and place a fresh one at the new price
+        if trade.stop_order_id:
+            # Existing order — try to modify in place; fall back to cancel + replace
+            modified = False
             try:
-                await client.cancel_order(trade.stop_order_id)
-            except Exception:
-                pass
-            trade.stop_order_id = None
-            # Temporarily set the new stop price so _place_broker_stop uses it
-            trade.stop_price = stop
-            await db.commit()
+                await client.modify_order(trade.stop_order_id, stop_price=stop)
+                modified = True
+                _enrich_logger.info(
+                    "[%s] Trade %d broker stop modified to $%.2f (order %s)",
+                    trade.symbol, trade.id, stop, trade.stop_order_id,
+                )
+            except Exception as exc:
+                _enrich_logger.warning(
+                    "[%s] Trade %d modify_order failed (%s) — canceling and re-placing stop",
+                    trade.symbol, trade.id, exc,
+                )
+
+            if not modified:
+                try:
+                    await client.cancel_order(trade.stop_order_id)
+                except Exception:
+                    pass
+                trade.stop_order_id = None
+                await db.commit()
+
+        if not trade.stop_order_id:
+            # No existing stop (either never placed, or just cancelled above) — place fresh
             try:
                 stop_order = await client.place_option_order(
                     option_symbol=trade.option_symbol,
@@ -633,12 +749,17 @@ async def update_trade_levels(
                 if stop_order.order_id:
                     trade.stop_order_id = stop_order.order_id
                     _enrich_logger.info(
-                        "[%s] Trade %d new broker stop placed: order %s @ $%.2f",
+                        "[%s] Trade %d broker stop placed: order %s @ $%.2f",
                         trade.symbol, trade.id, stop_order.order_id, stop,
+                    )
+                else:
+                    _enrich_logger.error(
+                        "[%s] Trade %d broker stop returned no order_id — bot-side stop only",
+                        trade.symbol, trade.id,
                     )
             except Exception as exc2:
                 _enrich_logger.error(
-                    "[%s] Trade %d failed to re-place broker stop at $%.2f: %s",
+                    "[%s] Trade %d failed to place broker stop at $%.2f: %s",
                     trade.symbol, trade.id, stop, exc2,
                 )
 

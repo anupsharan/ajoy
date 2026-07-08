@@ -224,7 +224,8 @@ class TestIsInTradingWindow:
         ts = _et(*WED, 12, 15)
         with patch.object(settings, "lunch_break_enabled", True), \
              patch.object(settings, "lunch_break_start", "11:30"), \
-             patch.object(settings, "lunch_break_end", "12:15"):
+             patch.object(settings, "lunch_break_end", "12:15"), \
+             patch.object(settings, "last_entry_time", "15:00"):
             assert is_in_trading_window(ts) is True
 
     def test_lunch_disabled_passes_through(self):
@@ -239,7 +240,8 @@ class TestIsInTradingWindow:
         ts_after  = _et(*WED, 13, 30)
         with patch.object(settings, "lunch_break_enabled", True), \
              patch.object(settings, "lunch_break_start", "12:30"), \
-             patch.object(settings, "lunch_break_end", "13:30"):
+             patch.object(settings, "lunch_break_end", "13:30"), \
+             patch.object(settings, "last_entry_time", "15:00"):
             assert is_in_trading_window(ts_inside) is False
             assert is_in_trading_window(ts_after) is True  # exactly at end → allowed
 

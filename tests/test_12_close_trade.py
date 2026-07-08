@@ -23,11 +23,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:////tmp/ajoy_close_trade_test.db"
 
+from unittest.mock import patch
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from app.database import Base
 from app.models import Trade, TradeStatus, Direction, ExitReason
 from app.services.scheduler import _close_trade
 from app.services.tradier import OrderResult
+from app.config import settings
 
 
 # ---------------------------------------------------------------------------
@@ -313,20 +315,21 @@ async def test_fill_close_to_caller_no_discrepancy(db):
 async def test_fill_sanity_check_rejects_fill_above_trigger(db):
     """
     Sandbox bug: get_fill_price returns $2.86 when trigger was $2.79 (2.5% above).
-    A market sell cannot fill above the bid; upper bound is +2%.
+    A market sell cannot fill above the bid; sandbox upper bound is +2%.
     Real-world example: GOOGL CALL 2026-06-04 — bot recorded +$114, Tradier showed -$78.
 
-    fill=$6.17, trigger=$6.00 → 2.8% above → rejected, trigger used.
+    fill=$6.17, trigger=$6.00 → 2.8% above → rejected under sandbox thresholds.
     """
     trade = _open_trade(entry_price=5.00, qty=1, remaining_qty=1)
     db.add(trade)
     await db.commit()
     await db.refresh(trade)
 
-    result = await _close_trade(
-        db, _client(fill_price=6.17, order_status="filled"),
-        trade, ExitReason.TP2, exit_price=6.00
-    )
+    with patch.object(settings, "use_sandbox", True):
+        result = await _close_trade(
+            db, _client(fill_price=6.17, order_status="filled"),
+            trade, ExitReason.TP2, exit_price=6.00
+        )
 
     assert result is True
     await db.refresh(trade)
@@ -356,7 +359,7 @@ async def test_fill_sanity_check_accepts_fill_just_inside_upper_bound(db):
 async def test_fill_sanity_check_rejects_stale_sandbox_price(db):
     """
     Sandbox bug: TP2 fires at $1.60 but get_fill_price returns $1.32 (17.5% below).
-    Threshold is 12% — 17.5% exceeds it, fill discarded, trigger quote used.
+    Sandbox threshold is 12% — 17.5% exceeds it, fill discarded, trigger quote used.
 
     Real-world example: IWM CALL 2026-06-04, tp2=$1.60, sandbox fill=$1.32.
     Without this guard: P&L recorded as +$2 instead of the correct +$58.
@@ -368,11 +371,12 @@ async def test_fill_sanity_check_rejects_stale_sandbox_price(db):
     await db.commit()
     await db.refresh(trade)
 
-    # 4.44 is 26% below 6.00 — exceeds 12% lower threshold, fill discarded
-    result = await _close_trade(
-        db, _client(fill_price=4.44, order_status="filled"),
-        trade, ExitReason.TP2, exit_price=6.00
-    )
+    # 4.44 is 26% below 6.00 — exceeds sandbox 12% lower threshold, fill discarded
+    with patch.object(settings, "use_sandbox", True):
+        result = await _close_trade(
+            db, _client(fill_price=4.44, order_status="filled"),
+            trade, ExitReason.TP2, exit_price=6.00
+        )
 
     assert result is True
     await db.refresh(trade)
@@ -384,21 +388,22 @@ async def test_fill_sanity_check_rejects_stale_sandbox_price(db):
 async def test_fill_sanity_check_rejects_17pct_deviation(db):
     """
     Mirrors the actual IWM Jun-04 case: trigger=1.60, fill=1.32 (17.5% deviation).
-    Must be rejected under the tightened 12% threshold.
+    Must be rejected under the sandbox 12% threshold.
     """
     trade = _open_trade(entry_price=1.31, qty=2, remaining_qty=2)
     db.add(trade)
     await db.commit()
     await db.refresh(trade)
 
-    result = await _close_trade(
-        db, _client(fill_price=1.32, order_status="filled"),
-        trade, ExitReason.TP2, exit_price=1.60
-    )
+    with patch.object(settings, "use_sandbox", True):
+        result = await _close_trade(
+            db, _client(fill_price=1.32, order_status="filled"),
+            trade, ExitReason.TP2, exit_price=1.60
+        )
 
     assert result is True
     await db.refresh(trade)
-    # Fill (17.5% deviation) rejected — trigger price used
+    # Fill (17.5% deviation) rejected under sandbox bounds — trigger price used
     assert trade.exit_price == 1.60
     assert trade.pnl == pytest.approx(58.0, abs=0.01)  # (1.60-1.31)*2*100
 
@@ -451,7 +456,7 @@ async def test_fill_sanity_check_accepts_11pct_deviation(db):
 @pytest.mark.asyncio
 async def test_fill_sanity_check_rejects_13pct_deviation(db):
     """
-    Fill at 13% below trigger — just outside the 12% threshold → trigger used.
+    Fill at 13% below trigger — just outside the sandbox 12% threshold → trigger used.
     trigger=6.00, fill=5.22 (13% below).
     """
     trade = _open_trade(entry_price=5.00, qty=1, remaining_qty=1)
@@ -459,14 +464,15 @@ async def test_fill_sanity_check_rejects_13pct_deviation(db):
     await db.commit()
     await db.refresh(trade)
 
-    result = await _close_trade(
-        db, _client(fill_price=5.22, order_status="filled"),
-        trade, ExitReason.TP2, exit_price=6.00
-    )
+    with patch.object(settings, "use_sandbox", True):
+        result = await _close_trade(
+            db, _client(fill_price=5.22, order_status="filled"),
+            trade, ExitReason.TP2, exit_price=6.00
+        )
 
     assert result is True
     await db.refresh(trade)
-    assert trade.exit_price == 6.00   # trigger used (13% > 12% threshold)
+    assert trade.exit_price == 6.00   # trigger used (13% > sandbox 12% threshold)
 
 
 # ===========================================================================

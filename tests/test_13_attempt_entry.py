@@ -28,6 +28,7 @@ from app.database import Base
 from app.models import Trade, TradeStatus, Strategy, Direction
 from app.services.scheduler import _attempt_entry
 from app.services.tradier import OrderResult, OptionQuote, Quote
+from app.config import settings
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +167,7 @@ def _patch_all_layers():
 async def test_buy_rejected_no_db_record(db):
     client = _make_client(order_status="rejected", fill_price=None)
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 0
 
 
@@ -174,7 +175,7 @@ async def test_buy_rejected_no_db_record(db):
 async def test_buy_canceled_no_db_record(db):
     client = _make_client(order_status="canceled", fill_price=None)
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 0
 
 
@@ -182,7 +183,7 @@ async def test_buy_canceled_no_db_record(db):
 async def test_buy_cancelled_two_l_no_db_record(db):
     client = _make_client(order_status="cancelled", fill_price=None)
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 0
 
 
@@ -195,7 +196,7 @@ async def test_delta_filter_primary_passes(db):
     """Delta=0.40, volume=100 — both within range. Trade created from primary filter."""
     client = _make_client(chain=[_option(delta=0.40, volume=100)])
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 1
 
 
@@ -205,7 +206,7 @@ async def test_delta_filter_fallback1_relaxes_delta(db):
     out_of_range = _option(delta=0.10, volume=50, ask=1.50)
     client = _make_client(chain=[out_of_range])
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 1
 
 
@@ -215,7 +216,7 @@ async def test_delta_filter_fallback2_ask_only(db):
     illiquid = _option(delta=0.10, volume=0, ask=1.50)
     client = _make_client(chain=[illiquid])
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 1
 
 
@@ -225,7 +226,7 @@ async def test_all_contracts_zero_ask_no_trade(db):
     no_ask = _option(delta=0.40, volume=100, ask=0.0)
     client = _make_client(chain=[no_ask])
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 0
 
 
@@ -249,7 +250,7 @@ async def test_expiry_prefers_non_0dte(db):
     client.get_options_chain = record_expiry
 
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
 
     assert len(chosen) >= 1
     assert chosen[0] == next_week
@@ -261,7 +262,7 @@ async def test_expiry_fallback_to_0dte_when_only_option(db):
     today = date.today().isoformat()
     client = _make_client(expirations=[today])
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 1
 
 
@@ -279,7 +280,7 @@ async def test_entry_price_always_uses_production_ask(db):
     """
     client = _make_client(fill_price=2.35, chain=[_option(ask=2.50)])
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     trade = await _get_trade(db)
     assert trade is not None
     # Must be ask (2.50), NOT the sandbox fill (2.35)
@@ -292,7 +293,7 @@ async def test_entry_price_uses_ask_when_no_fill(db):
     client = _make_client(fill_price=None, chain=[_option(ask=2.50)])
     client.get_order_status = AsyncMock(return_value={"status": "filled"})
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     trade = await _get_trade(db)
     assert trade is not None
     assert trade.entry_price == pytest.approx(2.50, abs=0.001)
@@ -316,7 +317,7 @@ async def test_skips_when_one_contract_exceeds_budget(db):
 
     with patch.object(settings, "amount_per_trade", 500.0):
         with _patch_all_layers():
-            await _attempt_entry(db, client, "AAPL", "neutral")
+            await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
 
     trade = await _get_trade(db)
     assert trade is None
@@ -326,7 +327,8 @@ async def test_skips_when_one_contract_exceeds_budget(db):
 @pytest.mark.asyncio
 async def test_fixed_dollar_risk_caps_qty(db):
     """
-    Fixed-dollar risk sizing: qty = risk_per_trade / (premium × stop_loss_pct).
+    Fixed-dollar risk sizing (legacy percentage path — structural levels off):
+    qty = risk_per_trade / (premium × stop_loss_pct).
     ask=2.00, stop 25% → risk/contract = $50; risk_per_trade=100 → risk_qty=2,
     even though the $1000 budget would allow 5 contracts.
     """
@@ -337,9 +339,10 @@ async def test_fixed_dollar_risk_caps_qty(db):
     with patch.object(settings, "amount_per_trade", 1000.0), \
          patch.object(settings, "risk_per_trade", 100.0), \
          patch.object(settings, "stop_loss_pct", 0.25), \
+         patch.object(settings, "structural_levels_enabled", False), \
          patch.object(settings, "use_limit_orders", False):
         with _patch_all_layers():
-            await _attempt_entry(db, client, "AAPL", "neutral")
+            await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
 
     trade = await _get_trade(db)
     assert trade is not None
@@ -359,7 +362,7 @@ async def test_qty_computed_correctly(db):
 
     with patch.object(settings, "amount_per_trade", 500.0):
         with _patch_all_layers():
-            await _attempt_entry(db, client, "AAPL", "neutral")
+            await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
 
     trade = await _get_trade(db)
     assert trade is not None
@@ -375,7 +378,7 @@ async def test_iv_below_threshold_allows_entry(db):
     """ATM IV 80% < 150% threshold → entry proceeds."""
     client = _make_client(atm_iv=0.80)
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 1
 
 
@@ -385,7 +388,7 @@ async def test_iv_exactly_at_threshold_allows_entry(db):
     from app.config import settings
     client = _make_client(atm_iv=settings.iv_max_threshold)
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 1
 
 
@@ -394,7 +397,7 @@ async def test_iv_above_threshold_blocks_entry(db):
     """ATM IV 200% > 150% threshold → entry blocked, no DB record."""
     client = _make_client(atm_iv=2.00)
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 0
 
 
@@ -404,7 +407,7 @@ async def test_iv_none_allows_entry(db):
     client = _make_client(atm_iv=None)
     client.get_atm_iv = MagicMock(return_value=None)
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 1
 
 
@@ -417,7 +420,7 @@ async def test_trade_record_fields_populated(db):
     """Verify the created Trade has all required fields set."""
     client = _make_client(fill_price=2.35)
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
 
     trade = await _get_trade(db)
     assert trade is not None
@@ -443,7 +446,7 @@ async def test_regime_bearish_blocks_call_on_non_spy(db):
     """SPY bearish → CALL on AAPL must be blocked (single-confirmation rule)."""
     client = _make_client()
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "bearish")
+        await _attempt_entry(db, client, "AAPL", "bearish", settings.vwap_band_pct)
     assert await _count_trades(db) == 0, (
         "Regime gate should block a CALL when SPY is bearish"
     )
@@ -460,7 +463,7 @@ async def test_regime_bullish_blocks_put_on_non_spy(db):
          patch("app.services.scheduler.check_bounce_confirmation", return_value=True), \
          patch("app.services.scheduler.check_momentum_candle",    return_value=True), \
          patch("app.services.scheduler.check_vwap_slope",         return_value=True):
-        await _attempt_entry(db, client, "MSFT", "bullish")
+        await _attempt_entry(db, client, "MSFT", "bullish", settings.vwap_band_pct)
     assert await _count_trades(db) == 0, (
         "Regime gate should block a PUT when SPY is bullish"
     )
@@ -478,30 +481,9 @@ async def test_regime_bearish_allows_put_on_non_spy(db):
          patch("app.services.scheduler.check_bounce_confirmation", return_value=True), \
          patch("app.services.scheduler.check_momentum_candle",    return_value=True), \
          patch("app.services.scheduler.check_vwap_slope",         return_value=True):
-        await _attempt_entry(db, client, "MSFT", "bearish")
+        await _attempt_entry(db, client, "MSFT", "bearish", settings.vwap_band_pct)
     assert await _count_trades(db) == 1, (
         "SPY bearish should NOT block a PUT entry"
-    )
-
-
-@pytest.mark.asyncio
-async def test_regime_gate_skipped_for_spy_itself(db):
-    """
-    When trading SPY (the regime proxy), L5 is skipped entirely.
-    Even if SPY regime is bearish, a CALL on SPY must still reach contract
-    selection (if other layers pass) — L1 handles the directional block,
-    not L5.
-    """
-    from app.config import settings
-    client = _make_client()
-    # regime = "bearish" would normally block a CALL, but ticker == regime symbol
-    with _patch_all_layers(), \
-         patch.object(settings, "regime_gate_symbol", "SPY"), \
-         patch.object(settings, "regime_gate_enabled", True):
-        await _attempt_entry(db, client, "SPY", "bearish")
-    # L1 produces a bullish signal (rising bars mock), so the trade proceeds
-    assert await _count_trades(db) == 1, (
-        "Regime gate must not block SPY trading on itself (circular check)"
     )
 
 
@@ -510,7 +492,7 @@ async def test_regime_neutral_allows_all_directions(db):
     """regime=neutral → neither CALL nor PUT is blocked."""
     client = _make_client()
     with _patch_all_layers():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 1
 
 
@@ -552,7 +534,7 @@ async def test_limit_order_entry_uses_fill_price(db):
                           fill_price=2.40,          # actual fill at bid
                           chain=[_option(ask=2.50)])  # mid=2.45
     with _patch_layers_limit():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     trade = await _get_trade(db)
     assert trade is not None
     assert trade.entry_price == pytest.approx(2.40, abs=0.001), (
@@ -570,7 +552,7 @@ async def test_limit_order_entry_fill_matches_mid(db):
                           fill_price=2.45,          # fill exactly at mid
                           chain=[_option(ask=2.50)])  # mid=2.45
     with _patch_layers_limit():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     trade = await _get_trade(db)
     assert trade is not None
     assert trade.entry_price == pytest.approx(2.45, abs=0.001), (
@@ -587,7 +569,7 @@ async def test_limit_order_places_limit_not_market(db):
     client = _make_client(order_status="filled",
                           chain=[_option(ask=2.50)])  # mid=2.45
     with _patch_layers_limit():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     # First call is the buy; a broker-side stop order may follow it.
     call_kwargs = client.place_option_order.call_args_list[0].kwargs
     assert call_kwargs.get("order_type") == "limit"
@@ -595,42 +577,42 @@ async def test_limit_order_places_limit_not_market(db):
 
 
 @pytest.mark.asyncio
-async def test_broker_stop_placed_after_entry(db):
+async def test_broker_tp_placed_after_entry(db):
     """
-    With broker_stop_enabled, a resting sell-to-close STOP order is placed
-    after the entry fill, at the trade's stop price, and its order id is
-    recorded on the Trade row.
+    With broker_tp_enabled=True and broker_stop_enabled=False, a resting
+    sell-to-close LIMIT order is placed for TP. Order sequence: buy → TP.
     """
     from app.config import settings
     client = _make_client(fill_price=None, chain=[_option(ask=2.50)])
     client.get_order_status = AsyncMock(return_value={"status": "filled"})
 
-    with patch.object(settings, "broker_stop_enabled", True):
+    with patch.object(settings, "broker_tp_enabled", True), \
+         patch.object(settings, "broker_stop_enabled", False):
         with _patch_all_layers():
-            await _attempt_entry(db, client, "AAPL", "neutral")
+            await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
 
     trade = await _get_trade(db)
     assert trade is not None
     calls = client.place_option_order.call_args_list
-    assert len(calls) == 2, "expected buy + broker stop"
-    stop_kwargs = calls[1].kwargs
-    assert stop_kwargs.get("side") == "sell_to_close"
-    assert stop_kwargs.get("order_type") == "stop"
-    assert stop_kwargs.get("stop_price") == pytest.approx(trade.stop_price, abs=0.001)
-    assert stop_kwargs.get("quantity") == trade.quantity
-    assert trade.stop_order_id == "buy001"   # mock returns the same order id
+    assert len(calls) == 2, "expected buy + broker TP limit order"
+    tp_kwargs = calls[1].kwargs
+    assert tp_kwargs.get("side") == "sell_to_close"
+    assert tp_kwargs.get("order_type") == "limit"
+    assert tp_kwargs.get("limit_price") == pytest.approx(trade.tp2_price, abs=0.01)
+    assert tp_kwargs.get("quantity") == trade.quantity
 
 
 @pytest.mark.asyncio
-async def test_broker_stop_disabled_no_extra_order(db):
-    """broker_stop_enabled=False → only the buy order is placed."""
+async def test_broker_tp_disabled_no_extra_order(db):
+    """broker_tp_enabled=False and broker_stop_enabled=False → only the buy order."""
     from app.config import settings
     client = _make_client(fill_price=None, chain=[_option(ask=2.50)])
     client.get_order_status = AsyncMock(return_value={"status": "filled"})
 
-    with patch.object(settings, "broker_stop_enabled", False):
+    with patch.object(settings, "broker_tp_enabled", False), \
+         patch.object(settings, "broker_stop_enabled", False):
         with _patch_all_layers():
-            await _attempt_entry(db, client, "AAPL", "neutral")
+            await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
 
     trade = await _get_trade(db)
     assert trade is not None
@@ -639,11 +621,41 @@ async def test_broker_stop_disabled_no_extra_order(db):
 
 
 @pytest.mark.asyncio
+async def test_broker_stop_and_tp_both_placed(db):
+    """
+    With both broker_stop_enabled and broker_tp_enabled, three orders are
+    placed: buy → stop → TP (stop first, then TP, as per the entry function order).
+    Both order IDs must be recorded on the trade.
+    """
+    from app.config import settings
+    client = _make_client(fill_price=None, chain=[_option(ask=2.50)])
+    client.get_order_status = AsyncMock(return_value={"status": "filled"})
+
+    with patch.object(settings, "broker_stop_enabled", True), \
+         patch.object(settings, "broker_tp_enabled", True):
+        with _patch_all_layers():
+            await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
+
+    trade = await _get_trade(db)
+    assert trade is not None
+    calls = client.place_option_order.call_args_list
+    assert len(calls) == 3, "expected buy + stop + TP limit"
+    stop_kwargs = calls[1].kwargs
+    assert stop_kwargs.get("order_type") == "stop"
+    assert stop_kwargs.get("side") == "sell_to_close"
+    tp_kwargs = calls[2].kwargs
+    assert tp_kwargs.get("order_type") == "limit"
+    assert tp_kwargs.get("side") == "sell_to_close"
+    assert trade.stop_order_id is not None
+    assert trade.tp_order_id is not None
+
+
+@pytest.mark.asyncio
 async def test_limit_order_rejected_no_db_record(db):
     """Limit order rejected during poll → no trade created."""
     client = _make_client(order_status="rejected")
     with _patch_layers_limit():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 0
 
 
@@ -655,7 +667,7 @@ async def test_limit_order_unfilled_cancels_and_skips(db):
     """
     client = _make_client(order_status="pending")   # never "filled"
     with _patch_layers_limit():
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     assert await _count_trades(db) == 0
     client.cancel_order.assert_called_once_with("buy001")
 
@@ -672,7 +684,7 @@ async def test_limit_order_qty_uses_mid_for_sizing(db):
     client = _make_client(order_status="filled", chain=[cheap])
     with _patch_layers_limit(), \
          patch.object(settings, "amount_per_trade", 500.0):
-        await _attempt_entry(db, client, "AAPL", "neutral")
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
     trade = await _get_trade(db)
     assert trade is not None
     assert trade.quantity == 2

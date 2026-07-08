@@ -60,7 +60,6 @@ BASE = dict(
     tp1_hit=False,
     vwap_at_entry=150.0,
     current_underlying=151.0,   # still above VWAP
-    bars_15m=rising_bars(base=100.0, n=30, step=0.5),
     remaining_qty=10,
 )
 
@@ -120,7 +119,6 @@ def test_vwap_break_put():
         direction="PUT",
         current_option_price=5.20,
         current_underlying=152.5,   # above VWAP 150 → break for PUT
-        bars_15m=falling_bars(base=200.0, n=30, step=0.5),
     )
     assert result.reason == "VWAP_BREAK"
 
@@ -132,28 +130,6 @@ def test_no_vwap_break_within_band():
     )
     assert result is None
 
-def test_trend_reversal_call_blocked_by_bearish():
-    # underlying just below VWAP (149.9 < 150) so Guard C passes,
-    # but still above VWAP_BREAK threshold (150 - 1%*150 = 148.5)
-    result = make_exit(
-        current_option_price=5.20,
-        bars_15m=falling_bars(base=200.0, n=30, step=0.5),  # bearish trend
-        current_underlying=149.9,   # just below VWAP — Guard C satisfied
-    )
-    assert result.reason == "TREND_REVERSAL"
-
-def test_trend_reversal_put_blocked_by_bullish():
-    # underlying just above VWAP (150.1 > 150) so Guard C passes for PUT,
-    # but still below VWAP_BREAK threshold (150 + 1%*150 = 151.5)
-    result = make_exit(
-        direction="PUT",
-        current_option_price=5.20,
-        bars_15m=rising_bars(base=100.0, n=30, step=0.5),   # bullish trend
-        current_underlying=150.1,   # just above VWAP — Guard C satisfied
-        vwap_at_entry=150.0,
-    )
-    assert result.reason == "TREND_REVERSAL"
-
 def test_stop_priority_over_vwap_break():
     """Stop loss takes priority over VWAP break."""
     result = make_exit(
@@ -162,12 +138,11 @@ def test_stop_priority_over_vwap_break():
     )
     assert result.reason == "STOP"
 
-def test_stop_priority_over_trend_reversal():
-    """Stop loss fires before trend reversal check."""
+def test_stop_priority_over_vwap_break_and_low_underlying():
+    """Stop loss fires even when underlying is also below VWAP (stop takes priority)."""
     result = make_exit(
         current_option_price=ORIGINAL_STOP - 0.15,
-        bars_15m=falling_bars(base=200.0, n=30, step=0.5),
-        current_underlying=151.0,
+        current_underlying=147.0,   # both VWAP break and stop triggered
     )
     assert result.reason == "STOP"
 

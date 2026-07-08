@@ -217,6 +217,93 @@ def check_5min_trend_filter(
 
 
 # ---------------------------------------------------------------------------
+# 1b. EMA cross freshness filter
+# ---------------------------------------------------------------------------
+
+def check_ema_cross_freshness(
+    bars_5m: list[Bar],
+    direction: str,
+    ticker: str = "",
+) -> bool:
+    """
+    Return True if the EMA9/EMA21 cross in `direction` occurred within the
+    last s2_cross_max_bars_old completed 5-min bars.
+
+    Prevents entering stale trends: the EMA9/21 order can stay in place for
+    hours after an initial impulse.  A cross that happened 10+ bars ago (50+
+    minutes) often signals an exhausted move, not a fresh opportunity.
+
+    Set S2_CROSS_MAX_BARS_OLD=0 in .env to disable (allow all cross ages).
+
+    CALL : looks for the most recent bar where EMA9 crossed ABOVE EMA21.
+    PUT  : looks for the most recent bar where EMA9 crossed BELOW EMA21.
+
+    Returns False (block) if no cross is found in available history — the
+    trend was established before the lookback window, which is too old.
+    Returns True (allow) when there is insufficient data to evaluate.
+    """
+    max_bars = settings.s2_cross_max_bars_old
+    if max_bars <= 0:
+        return True  # disabled
+
+    bars = completed_bars(bars_5m, interval_minutes=5)
+    ema_fast = settings.s2_ema_fast
+    ema_slow = settings.s2_ema_slow
+
+    if len(bars) < ema_slow + 2:
+        return True  # not enough history — don't block on data scarcity
+
+    closes = [b.close for b in bars]
+    fast_vals = calculate_ema(closes, ema_fast)
+    slow_vals = calculate_ema(closes, ema_slow)
+
+    n = len(bars)
+    cross_bars_ago: int | None = None
+
+    # Walk backwards from the most recent completed bar to find the last cross
+    for i in range(n - 1, 0, -1):
+        f_now  = fast_vals[i]
+        f_prev = fast_vals[i - 1]
+        s_now  = slow_vals[i]
+        s_prev = slow_vals[i - 1]
+
+        # Skip bars where EMA hasn't converged (NaN)
+        if any(v != v for v in (f_now, f_prev, s_now, s_prev)):
+            continue
+
+        if direction == "CALL":
+            if f_prev <= s_prev and f_now > s_now:
+                cross_bars_ago = (n - 1) - i  # 0 = cross on the most recent bar
+                break
+        else:  # PUT
+            if f_prev >= s_prev and f_now < s_now:
+                cross_bars_ago = (n - 1) - i
+                break
+
+    if cross_bars_ago is None:
+        # No cross in available history → trend is older than the lookback window
+        logger.info(
+            "[S2-freshness][%s] No %s EMA cross found in %d bars — trend too old, blocking",
+            ticker, direction, n,
+        )
+        return False
+
+    ok = cross_bars_ago <= max_bars
+    if not ok:
+        logger.info(
+            "[S2-freshness][%s] %s cross is %d bars old (max %d bars = %d min) — "
+            "exhausted move, blocking",
+            ticker, direction, cross_bars_ago, max_bars, max_bars * 5,
+        )
+    else:
+        logger.debug(
+            "[S2-freshness][%s] %s cross %d bars old — within %d-bar window ✓",
+            ticker, direction, cross_bars_ago, max_bars,
+        )
+    return ok
+
+
+# ---------------------------------------------------------------------------
 # 2. Get current 5-min EMA9 level (used as the pullback reference)
 # ---------------------------------------------------------------------------
 
@@ -306,21 +393,28 @@ def check_1min_pullback(
 def check_1min_confirmation(
     bars_1m: list[Bar],
     direction: str,
+    ema9_5m: float | None = None,
     ticker: str = "",
 ) -> bool:
     """
     Return True if the most recently completed 1-min candle (bars[-1]) confirms
-    the entry by breaking out through the pullback bar's range.
+    the entry by breaking out through the pullback bar's range AND closing on
+    the correct side of the 5-min EMA9 level.
 
     bars[-2] = pullback bar (the one that touched EMA9 — checked by check_1min_pullback)
     bars[-1] = confirmation bar (this candle must break bars[-2]'s range)
 
-    CALL : bars[-1] is bullish (close > open)  AND  close > bars[-2] High
-    PUT  : bars[-1] is bearish (close < open)  AND  close < bars[-2] Low
+    CALL : bars[-1] is bullish (close > open)
+           AND  close > bars[-2] High        (breaks prior range)
+           AND  close > ema9_5m              (reclaimed EMA9 — weak bounces that stall
+                                              below EMA9 are filtered out)
 
-    The range-break requirement prevents a weak recovery from triggering entry —
-    buyers (CALL) must decisively clear the prior bar's high, sellers (PUT) must
-    pierce its low.
+    PUT  : bars[-1] is bearish (close < open)
+           AND  close < bars[-2] Low         (breaks prior range)
+           AND  close < ema9_5m              (rejected back below EMA9)
+
+    The EMA9 close filter (ema9_5m) is optional: when None the check is skipped
+    (unit tests that don't supply a level still work).
     """
     bars = completed_bars(bars_1m, interval_minutes=1)
     if len(bars) < 2:
@@ -331,39 +425,43 @@ def check_1min_confirmation(
     previous = bars[-2]
 
     if direction == "CALL":
-        bullish       = current.close > current.open
-        breaks_high   = current.close > previous.high
-        ok = bullish and breaks_high
+        bullish     = current.close > current.open
+        breaks_high = current.close > previous.high
+        above_ema9  = (ema9_5m is None) or (current.close > ema9_5m)
+        ok = bullish and breaks_high and above_ema9
         if not ok:
             logger.info(
                 "[S2-confirm][%s] CALL confirmation failed — "
-                "candle %s (open=%.4f close=%.4f) prev_high=%.4f",
+                "candle %s (open=%.4f close=%.4f) prev_high=%.4f ema9=%.4f above_ema9=%s",
                 ticker,
                 "bullish" if bullish else "bearish/doji",
                 current.open, current.close, previous.high,
+                ema9_5m or 0.0, above_ema9,
             )
         else:
             logger.info(
-                "[S2-confirm][%s] CALL confirmed ✓ — bullish close=%.4f > prev_high=%.4f",
-                ticker, current.close, previous.high,
+                "[S2-confirm][%s] CALL confirmed ✓ — close=%.4f > prev_high=%.4f > ema9=%.4f",
+                ticker, current.close, previous.high, ema9_5m or 0.0,
             )
         return ok
     else:  # PUT
-        bearish      = current.close < current.open
-        breaks_low   = current.close < previous.low
-        ok = bearish and breaks_low
+        bearish    = current.close < current.open
+        breaks_low = current.close < previous.low
+        below_ema9 = (ema9_5m is None) or (current.close < ema9_5m)
+        ok = bearish and breaks_low and below_ema9
         if not ok:
             logger.info(
                 "[S2-confirm][%s] PUT confirmation failed — "
-                "candle %s (open=%.4f close=%.4f) prev_low=%.4f",
+                "candle %s (open=%.4f close=%.4f) prev_low=%.4f ema9=%.4f below_ema9=%s",
                 ticker,
                 "bearish" if bearish else "bullish/doji",
                 current.open, current.close, previous.low,
+                ema9_5m or 0.0, below_ema9,
             )
         else:
             logger.info(
-                "[S2-confirm][%s] PUT confirmed ✓ — bearish close=%.4f < prev_low=%.4f",
-                ticker, current.close, previous.low,
+                "[S2-confirm][%s] PUT confirmed ✓ — close=%.4f < prev_low=%.4f < ema9=%.4f",
+                ticker, current.close, previous.low, ema9_5m or 0.0,
             )
         return ok
 
@@ -438,6 +536,61 @@ def check_volume_filter(
 
 
 # ---------------------------------------------------------------------------
+# 5b. Structure exit — 1-min close through the 5-min EMA9
+#
+# WHY: the old signal exit (5-min EMA9/21 cross) needs 10–15 minutes to flip
+# after price reverses — on short-dated options the position has already lost
+# 15–20% by then, so the hard stop always fired first (live data: only 2
+# EMA_CROSS exits in 43 trades, both losers).  The entry thesis is "price
+# bounced off the 5-min EMA9" — so the correct invalidation is price closing
+# back through EMA9, which this detects within 2–3 minutes.
+# ---------------------------------------------------------------------------
+
+def check_s2_structure_exit(
+    bars_1m: list[Bar],
+    direction: str,
+    ema9_5m: float,
+    confirm_bars: int | None = None,
+    margin_pct: float | None = None,
+    ticker: str = "",
+) -> bool:
+    """
+    Return True (exit) when the last `confirm_bars` COMPLETED 1-min bars all
+    closed on the wrong side of the 5-min EMA9 by at least `margin_pct`.
+
+      CALL: all closes < ema9 × (1 − margin)  → thesis invalidated, exit
+      PUT : all closes > ema9 × (1 + margin)  → thesis invalidated, exit
+
+    Two consecutive closes (default) filter single-bar wicks; the margin
+    filters closes that are essentially *on* the EMA.
+    """
+    confirm_bars = confirm_bars if confirm_bars is not None else settings.s2_structure_exit_bars
+    margin_pct   = margin_pct   if margin_pct   is not None else settings.s2_structure_exit_margin_pct
+
+    if ema9_5m <= 0 or confirm_bars <= 0:
+        return False
+
+    bars = completed_bars(bars_1m, interval_minutes=1)
+    if len(bars) < confirm_bars:
+        return False
+
+    recent = bars[-confirm_bars:]
+    if direction == "CALL":
+        broken = all(b.close < ema9_5m * (1 - margin_pct) for b in recent)
+    else:  # PUT
+        broken = all(b.close > ema9_5m * (1 + margin_pct) for b in recent)
+
+    if broken:
+        logger.info(
+            "[S2-struct-exit][%s] %s invalidated — last %d 1-min closes on wrong "
+            "side of 5m-EMA9 %.4f (closes: %s)",
+            ticker, direction, confirm_bars, ema9_5m,
+            [round(b.close, 4) for b in recent],
+        )
+    return broken
+
+
+# ---------------------------------------------------------------------------
 # 6. S2 exit conditions
 # ---------------------------------------------------------------------------
 
@@ -452,12 +605,17 @@ def check_s2_exit_conditions(
     now: Optional[datetime] = None,
     interval_minutes: int = 5,
     bid_price: Optional[float] = None,
+    bars_1m: Optional[list[Bar]] = None,
+    ema9_5m: Optional[float] = None,
 ) -> Optional[S2ExitCondition]:
     """
     Evaluate S2 exit conditions in priority order:
 
+    0. Quick-loss early exit (first s2_quick_loss_max_minutes only)
     1. Hard stop (min-hold respected via s2_stop_loss_min_hold_minutes)
     2. Trailing stop (breakeven → trail cascade)
+       Stage 1: gain ≥ s2_breakeven_pct  → stop = entry × (1 + s2_trailing_stop_lock_profit_pct)
+       Stage 2: gain ≥ s2_trail_pct      → stop trails s2_trail_from_current_pct below current
     3. Opposite EMA cross (signal-based exit)
 
     Returns an S2ExitCondition when an exit is warranted, else None.
@@ -477,6 +635,28 @@ def check_s2_exit_conditions(
     # actually breach the stop level before we act).  Falls back to mid if bid
     # is not supplied (e.g. in unit tests).
     _stop_check_price = bid_price if bid_price is not None else current_price
+
+    # ── 0. Quick-loss early exit ─────────────────────────────────────────────
+    # If the option drops s2_quick_loss_pct% within the first
+    # s2_quick_loss_max_minutes of the trade, exit immediately.
+    # Catches bad entries that go sharply against us before gamma amplifies the
+    # loss further — saves the gap between quick_loss_pct and the hard stop.
+    if settings.s2_quick_loss_pct > 0 and entry_time is not None:
+        _entry_ql = entry_time if entry_time.tzinfo else entry_time.replace(tzinfo=timezone.utc)
+        held_min_ql = (_now - _entry_ql).total_seconds() / 60
+        in_window = held_min_ql <= settings.s2_quick_loss_max_minutes
+        past_quiet = held_min_ql >= settings.s2_quick_loss_min_hold_minutes
+        if in_window and past_quiet:
+            loss_pct = (entry_price - _stop_check_price) / entry_price
+            if loss_pct >= settings.s2_quick_loss_pct:
+                logger.info(
+                    "[S2-exit] QUICK_LOSS — option down %.1f%% (≥%.0f%% threshold) "
+                    "at %.1f min of entry (window 0–%d min). Entry=%.2f current=%.2f",
+                    loss_pct * 100, settings.s2_quick_loss_pct * 100,
+                    held_min_ql, settings.s2_quick_loss_max_minutes,
+                    entry_price, _stop_check_price,
+                )
+                return S2ExitCondition(reason="QUICK_LOSS", close_all=True)
 
     # ── Hard stop min-hold ───────────────────────────────────────────────────
     stop_suppressed = False
@@ -515,23 +695,39 @@ def check_s2_exit_conditions(
             return S2ExitCondition(reason="TRAILING_STOP", close_all=False, new_stop=new_stop)
 
     elif gain_pct >= settings.s2_breakeven_pct and not be_stop_set:
-        # Move stop to breakeven
-        new_stop = round(entry_price, 2)
+        # Move stop to entry + lock_profit_pct (not plain entry) so the exit
+        # is net-positive after bid-ask spread cost when stop fires at the bid.
+        lock_pct = settings.s2_trailing_stop_lock_profit_pct
+        new_stop = round(entry_price * (1.0 + lock_pct), 2)
         if new_stop > stop_price:
             logger.info(
-                "[S2-exit] Breakeven stop set at entry %.2f (gain=%.1f%%)",
-                entry_price, gain_pct * 100,
+                "[S2-exit] Breakeven stop raised to %.2f (entry %.2f + %.0f%% lock, gain=%.1f%%)",
+                new_stop, entry_price, lock_pct * 100, gain_pct * 100,
             )
             return S2ExitCondition(reason="TRAILING_STOP", close_all=False, new_stop=new_stop)
 
-    # ── 3. Opposite EMA cross (signal exit) ──────────────────────────────────
-    opposite = "PUT" if direction == "CALL" else "CALL"
-    if _check_ema_cross_signal(bars, opposite, interval_minutes=interval_minutes):
-        logger.info(
-            "[S2-exit] EMA_CROSS — opposite %s cross detected → exiting %s position",
-            opposite, direction,
-        )
-        return S2ExitCondition(reason="EMA_CROSS", close_all=True)
+    # ── 3. Signal exit ───────────────────────────────────────────────────────
+    # Structure exit (default): 1-min closes back through the 5-min EMA9 —
+    # reacts within 2–3 minutes of the thesis breaking.  The legacy 5-min
+    # EMA9/21 cross took 10–15 min to flip, by which point the hard stop had
+    # always fired first (it saved zero trades in live data).
+    if (
+        settings.s2_structure_exit_enabled
+        and bars_1m is not None
+        and ema9_5m is not None
+        and ema9_5m > 0
+    ):
+        if check_s2_structure_exit(bars_1m, direction, ema9_5m):
+            return S2ExitCondition(reason="STRUCT_EXIT", close_all=True)
+    else:
+        # Legacy signal exit — opposite EMA cross on 5-min bars
+        opposite = "PUT" if direction == "CALL" else "CALL"
+        if _check_ema_cross_signal(bars, opposite, interval_minutes=interval_minutes):
+            logger.info(
+                "[S2-exit] EMA_CROSS — opposite %s cross detected → exiting %s position",
+                opposite, direction,
+            )
+            return S2ExitCondition(reason="EMA_CROSS", close_all=True)
 
     return None
 
