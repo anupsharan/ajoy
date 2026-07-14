@@ -9,15 +9,21 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.config import settings
+from unittest.mock import patch
+
 from app.services.strategy import (
     calculate_atr,
     check_chop_regime,
+    check_ema_slope_15m,
+    check_entry_signal,
     compute_structural_levels,
+    get_regime_from_vwap,
     get_structural_stop_target,
+    session_bars,
     should_activate_runner,
 )
-from app.services.strategy_ema import check_s2_structure_exit
-from tests.conftest import make_bar
+from app.services.strategy_ema import check_ema_cross_freshness, check_s2_structure_exit
+from tests.conftest import make_bar, falling_bars
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +217,39 @@ class TestAtrAndChop:
         session = bars_from_ohlc([(500, 501, 499, 500.5)])
         assert check_chop_regime(session, daily_atr=0.0) == (False, 0.0)
 
+    def test_gap_up_day_counts_gap_in_true_range(self):
+        """
+        Gap-and-go regression (Jul 9 2026): QQQ gapped +$9 overnight, then
+        held a tight $2 intraday range while trending above VWAP.  Plain
+        range read 40% of ATR → wrongly blocked; TRUE range vs yesterday's
+        close reads (511−500)/5 = 220% → trend day, entries allowed.
+        """
+        session = bars_from_ohlc(
+            [(509.0, 509.5, 509.0, 509.3), (509.3, 511.0, 509.2, 510.8)],
+            start=datetime(2026, 7, 9, 10, 0),
+        )
+        # Without prev_close: intraday range 2.0 / ATR 5.0 = 0.4 → chop
+        is_chop, ratio = check_chop_regime(session, daily_atr=5.0, min_ratio=0.5)
+        assert is_chop and ratio == pytest.approx(0.4)
+        # With prev_close 500 (gap included): (511−500)/5 = 2.2 → NOT chop
+        is_chop, ratio = check_chop_regime(
+            session, daily_atr=5.0, min_ratio=0.5, prev_close=500.0
+        )
+        assert not is_chop
+        assert ratio == pytest.approx(2.2)
+
+    def test_gap_down_day_counts_gap_too(self):
+        """Mirror case: gap DOWN with a tight intraday range is also a move."""
+        session = bars_from_ohlc(
+            [(491.0, 491.5, 490.0, 490.5), (490.5, 491.2, 490.2, 491.0)],
+            start=datetime(2026, 7, 9, 10, 0),
+        )
+        is_chop, ratio = check_chop_regime(
+            session, daily_atr=5.0, min_ratio=0.5, prev_close=500.0
+        )
+        assert not is_chop
+        assert ratio == pytest.approx((500.0 - 490.0) / 5.0)
+
 
 # ---------------------------------------------------------------------------
 # S2 structure exit
@@ -248,6 +287,134 @@ class TestS2StructureExit:
     def test_no_exit_insufficient_data(self):
         assert not check_s2_structure_exit([], "CALL", ema9_5m=100.0)
         assert not check_s2_structure_exit(self._bars([99.0]), "CALL", ema9_5m=0.0)
+
+
+# ---------------------------------------------------------------------------
+# Session VWAP — regression for the multi-day VWAP bug (NFLX #134, Jul 8 2026)
+# ---------------------------------------------------------------------------
+
+class TestSessionVwap:
+    def _two_day_1m_bars(self, yday_px=76.6, today_px=75.5, n_each=40, today_rise=0.01):
+        """Yesterday trades high; today trades lower but RISING (recovery day)."""
+        bars = []
+        for i in range(n_each):
+            bars.append(make_bar(yday_px, open_=yday_px - 0.02,
+                                 ts=datetime(2025, 1, 6, 10, 0) + timedelta(minutes=i)))
+        for i in range(n_each):
+            c = today_px + i * today_rise
+            bars.append(make_bar(c, open_=c - 0.02,
+                                 ts=datetime(2025, 1, 7, 10, 0) + timedelta(minutes=i)))
+        return bars
+
+    def test_session_bars_filters_to_last_day(self):
+        bars = self._two_day_1m_bars()
+        sess = session_bars(bars)
+        assert len(sess) == 40
+        assert all(b.time.date() == bars[-1].time.date() for b in sess)
+
+    def test_recovery_day_put_rejected_wrong_side(self):
+        """
+        NFLX #134 pattern: yesterday ~76.6, today recovering ~75.5→75.9.
+        Blended multi-day VWAP (~76.1) made price look 'below VWAP' → PUT.
+        True session VWAP (~75.7) has price ABOVE → wrong side → no signal.
+        """
+        bars_1m = self._two_day_1m_bars()
+        bars_15m = falling_bars(base=78.0, n=40, step=0.05)   # bearish 15-min trend
+        from unittest.mock import patch as _patch
+        with _patch.object(settings, "ema_slope_filter_enabled", False):
+            sig = check_entry_signal(bars_1m, bars_15m)
+        assert sig is None   # with the blended VWAP this produced a PUT signal
+
+    def test_regime_uses_session_vwap(self):
+        """QQQ recovering above today's VWAP must read BULLISH, not bearish."""
+        bars = self._two_day_1m_bars(yday_px=500.0, today_px=490.0, today_rise=0.1)
+        # last close 493.9 vs session VWAP ≈ 491.9 → ~+0.4% above → bullish
+        # (blended with yesterday's 500s, the old code read this as BEARISH)
+        from unittest.mock import patch as _patch
+        with _patch.object(settings, "regime_gate_enabled", True), \
+             _patch.object(settings, "regime_vwap_threshold", 0.002):
+            assert get_regime_from_vwap(bars) == "bullish"
+
+
+# ---------------------------------------------------------------------------
+# S2 cross freshness — session-aware
+# ---------------------------------------------------------------------------
+
+class TestCrossFreshnessSessionAware:
+    def _two_day_bars(self, cross_today: bool):
+        """
+        60 five-min bars across two dates.  Downward EMA9/21 cross placement:
+          cross_today=False → prices fall early on DAY 1 (cross yesterday),
+                              then keep drifting down (no new cross today)
+          cross_today=True  → prices flat both days, then fall sharply in
+                              today's bars (cross today)
+        """
+        rows = []
+        n = 60
+        for i in range(n):
+            if cross_today:
+                px = 100.0 if i < 45 else 100.0 - (i - 44) * 0.8
+            else:
+                px = 100.0 if i < 5 else 100.0 - (i - 4) * 0.4
+            rows.append((px + 0.02, px + 0.05, px - 0.05, px))
+        bars = bars_from_ohlc(rows, start=datetime(2025, 1, 6, 9, 30), minutes=5)
+        # First 30 bars = Jan 6 (yesterday), last 30 = Jan 7 (today)
+        for i, b in enumerate(bars):
+            if i >= 30:
+                bars[i] = make_bar(b.close, open_=b.open, high=b.high, low=b.low,
+                                   ts=datetime(2025, 1, 7, 9, 30) + timedelta(minutes=(i - 30) * 5))
+        return bars
+
+    def test_prior_day_cross_blocked_even_within_bar_cap(self):
+        bars = self._two_day_bars(cross_today=False)
+        with patch.object(settings, "s2_cross_max_bars_old", 99):
+            assert not check_ema_cross_freshness(bars, "PUT", ticker="TST")
+
+    def test_same_day_cross_passes(self):
+        bars = self._two_day_bars(cross_today=True)
+        with patch.object(settings, "s2_cross_max_bars_old", 40):
+            assert check_ema_cross_freshness(bars, "PUT", ticker="TST")
+
+
+# ---------------------------------------------------------------------------
+# L1 EMA slope filter
+# ---------------------------------------------------------------------------
+
+class TestEmaSlopeFilter:
+    def _bars(self, closes):
+        return bars_from_ohlc([(c, c + 0.05, c - 0.05, c) for c in closes])
+
+    def test_rising_ema_passes_bullish(self):
+        closes = [100 + i * 0.5 for i in range(40)]
+        with patch.object(settings, "ema_slope_filter_enabled", True):
+            assert check_ema_slope_15m(self._bars(closes), "bullish", period=21, lookback=2)
+
+    def test_rolling_over_ema_blocks_bullish(self):
+        # rise then decline — the EMA rolls over even while price may sit above it.
+        # (A pure plateau keeps the EMA asymptotically rising, which correctly
+        # passes — the filter targets rollovers, not slow convergence.)
+        closes = [100 + i * 0.5 for i in range(30)] + [115 - i * 0.5 for i in range(30)]
+        with patch.object(settings, "ema_slope_filter_enabled", True):
+            assert not check_ema_slope_15m(self._bars(closes), "bullish", period=21, lookback=2)
+
+    def test_falling_ema_passes_bearish(self):
+        closes = [130 - i * 0.5 for i in range(40)]
+        with patch.object(settings, "ema_slope_filter_enabled", True):
+            assert check_ema_slope_15m(self._bars(closes), "bearish", period=21, lookback=2)
+
+    def test_rising_ema_blocks_bearish(self):
+        closes = [100 + i * 0.5 for i in range(40)]
+        with patch.object(settings, "ema_slope_filter_enabled", True):
+            assert not check_ema_slope_15m(self._bars(closes), "bearish", period=21, lookback=2)
+
+    def test_disabled_always_passes(self):
+        closes = [100 + i * 0.5 for i in range(30)] + [115.0] * 30
+        with patch.object(settings, "ema_slope_filter_enabled", False):
+            assert check_ema_slope_15m(self._bars(closes), "bullish", period=21, lookback=2)
+
+    def test_insufficient_data_passes(self):
+        with patch.object(settings, "ema_slope_filter_enabled", True):
+            assert check_ema_slope_15m(self._bars([100.0] * 5), "bullish", period=21, lookback=2)
 
 
 # ---------------------------------------------------------------------------

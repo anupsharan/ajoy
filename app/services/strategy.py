@@ -61,6 +61,27 @@ def calculate_vwap(bars: list[Bar]) -> float:
     return cum_tp_vol / cum_vol
 
 
+def session_bars(bars: list[Bar]) -> list[Bar]:
+    """
+    Return only the bars belonging to the most recent session (the last
+    bar's calendar date).
+
+    BUGFIX (Jul 8 2026): get_intraday_bars() adds a +4 calendar-day buffer to
+    every fetch (weekend/holiday headroom for EMA lookbacks), so a "1-day"
+    1-min fetch actually spans ~3 trading sessions.  Every session-VWAP
+    computed on the raw list silently blended prior days' prices — after a
+    down day, the phantom VWAP sat far above the real one, making every
+    intraday recovery look like a "pullback below VWAP" and biasing S1 into
+    counter-trend PUTs (NFLX #134: S1 saw VWAP 76.35 while the true session
+    VWAP was 75.51 — the PUT would have been rejected as wrong-side).
+    The QQQ regime gate had the same distortion.
+    """
+    if not bars:
+        return bars
+    last_day = bars[-1].time.date()
+    return [b for b in bars if b.time.date() == last_day]
+
+
 def completed_bars(
     bars: list[Bar],
     interval_minutes: int,
@@ -138,6 +159,50 @@ def ema_direction(
     if price_now < ema_now - epsilon:
         return "bearish"
     return "neutral"
+
+
+def check_ema_slope_15m(
+    bars_15m: list[Bar],
+    trend: str,
+    period: int | None = None,
+    lookback: int | None = None,
+) -> bool:
+    """
+    L1 EMA slope filter — the 15-min EMA itself must be moving in the trade
+    direction.
+
+      bullish (CALL): EMA(period) now > EMA(period) `lookback` bars ago
+      bearish (PUT) : EMA(period) now < EMA(period) `lookback` bars ago
+
+    WHY: price-above-EMA21 stays "bullish" deep into a dying trend — the EMA
+    flattens and rolls over long before price crosses it.  Requiring the EMA's
+    own slope to agree adds recency WITHOUT tightening the leash on pullbacks
+    (a pullback moves price, not the EMA's direction).
+
+    Returns True (pass) when the filter is disabled or there is insufficient
+    data — never blocks on missing bars.
+    """
+    if not settings.ema_slope_filter_enabled:
+        return True
+    period   = period   if period   is not None else settings.ema_period
+    lookback = lookback if lookback is not None else settings.ema_slope_lookback
+    if lookback <= 0:
+        return True
+
+    closes = [b.close for b in bars_15m]
+    vals = [e for e in calculate_ema(closes, period) if e == e]  # drop NaN
+    if len(vals) < lookback + 1:
+        return True  # not enough history — don't block
+
+    ema_now  = vals[-1]
+    ema_then = vals[-1 - lookback]
+    eps = ema_now * 0.00005  # same relative epsilon as ema_direction()
+
+    if trend == "bullish":
+        return ema_now > ema_then + eps
+    if trend == "bearish":
+        return ema_now < ema_then - eps
+    return True
 
 
 def check_ema_alignment(
@@ -527,14 +592,25 @@ def check_chop_regime(
     qqq_bars_1m: list[Bar],
     daily_atr: float,
     min_ratio: float | None = None,
+    prev_close: float | None = None,
 ) -> tuple[bool, float]:
     """
     Return (is_chop, range_ratio).
 
-      range_ratio = (today's session high − low) / daily ATR
+      range_ratio = today's TRUE range / daily ATR
 
-    is_chop=True when range_ratio < min_ratio — the market hasn't moved enough
-    relative to its normal daily range to support continuation trades.
+    True range includes the overnight gap when prev_close is supplied:
+      max(session high, prev_close) − min(session low, prev_close)
+
+    WHY true range (Jul 9 2026): the denominator (ATR) averages TRUE ranges,
+    which include gaps.  Measuring the numerator as plain high−low made the
+    two inconsistent — on gap days the ratio was systematically understated
+    and the gate blocked gap-and-go sessions (QQQ +1.4% on an opening gap
+    read as "47% of ATR = chop" while grinding up a textbook trend above
+    VWAP).  Gap-and-go is among the BEST tape for pullback-continuation;
+    counting the gap fixes the misread without touching the threshold.
+
+    is_chop=True when range_ratio < min_ratio.
     Returns (False, 0.0) when data is missing — never block on missing data.
 
     Callers should only apply this after chop_filter_start_time: early in the
@@ -549,8 +625,12 @@ def check_chop_regime(
     if not session:
         return False, 0.0
 
-    session_range = max(b.high for b in session) - min(b.low for b in session)
-    ratio = session_range / daily_atr
+    hi = max(b.high for b in session)
+    lo = min(b.low for b in session)
+    if prev_close and prev_close > 0:
+        hi = max(hi, prev_close)
+        lo = min(lo, prev_close)
+    ratio = (hi - lo) / daily_atr
     return ratio < min_ratio, round(ratio, 3)
 
 
@@ -587,6 +667,7 @@ def get_adaptive_vwap_band(qqq_bars_1m: list[Bar]) -> tuple[float, str, float]:
     if not settings.adaptive_band_enabled or not qqq_bars_1m:
         return settings.vwap_band_pct, "normal", 0.0
 
+    qqq_bars_1m = session_bars(qqq_bars_1m)   # today's session only
     qqq_vwap = calculate_vwap(qqq_bars_1m)
     if qqq_vwap == 0:
         return settings.vwap_band_pct, "normal", 0.0
@@ -643,7 +724,9 @@ def check_entry_signal(
     if not bars_1m or not bars_15m:
         return None
 
-    vwap = calculate_vwap(bars_1m)
+    # Session VWAP — today's bars only (see session_bars docstring: the raw
+    # fetch spans multiple sessions and blending them broke the side check).
+    vwap = calculate_vwap(session_bars(bars_1m))
     if vwap == 0:
         return None
 
@@ -664,6 +747,18 @@ def check_entry_signal(
         logger.info(
             "%s[L1] EMA trend '%s' not yet confirmed for %d consecutive bars — skipping",
             sym, trend, settings.ema_consecutive_bars,
+        )
+        return None
+
+    # EMA slope filter — the EMA itself must be moving with the trend.
+    # Price above a flattening/declining EMA21 is a stale trend, not a
+    # tradeable one (the failure mode behind S1's losing CALLs).
+    if not check_ema_slope_15m(bars_15m, trend):
+        logger.info(
+            "%s[L1] EMA%d slope not %s over last %d bars — stale trend, skipping",
+            sym, settings.ema_period,
+            "rising" if trend == "bullish" else "falling",
+            settings.ema_slope_lookback,
         )
         return None
 
@@ -692,6 +787,21 @@ def check_entry_signal(
     #   Just right (in the donut)  → ✅ valid entry
     #   Too close (< min_clearance)→ blocked: AT RISK, no directional conviction
     distance_pct = abs(current_price - vwap) / vwap
+
+    # Too close to VWAP — the "AT RISK" zone: no directional conviction yet.
+    # BUGFIX (Jul 2026): vwap_min_clearance_pct was documented here, set in
+    # .env, and exposed in the Settings UI — but never actually enforced in
+    # the live code path (only in the June 22 backup file).  Live data shows
+    # the cost: 23 trades entered <0.4% from VWAP for −$483 combined.
+    min_clear = settings.vwap_min_clearance_pct
+    if min_clear > 0 and distance_pct < min_clear:
+        logger.info(
+            "%s[L1] %s rejected — price %.2f is only %.3f%% from VWAP %.2f "
+            "(min clearance %.2f%% — AT RISK, no directional conviction)",
+            sym, direction_prelim, current_price, distance_pct * 100, vwap,
+            min_clear * 100,
+        )
+        return None
 
     if distance_pct > effective_band:
         logger.info(
@@ -872,6 +982,8 @@ def check_vwap_slope(
     lookback      = lookback      or settings.vwap_slope_lookback_bars
     threshold_pct = threshold_pct or settings.vwap_slope_threshold_pct
 
+    bars_1m = session_bars(bars_1m)   # today's session only (see session_bars)
+
     if len(bars_1m) < lookback + 5:
         # Too early in session — not enough bars to compute a meaningful slope
         return True
@@ -933,6 +1045,11 @@ def get_regime_from_vwap(qqq_bars_1m: list) -> str:
     if not settings.regime_gate_enabled or not qqq_bars_1m:
         return "neutral"
 
+    # Session VWAP — today's bars only.  With the raw multi-day list, a down
+    # week left QQQ "below VWAP" (= BEARISH regime) all day even while it
+    # recovered above its true session VWAP — blocking CALLs and waving
+    # through counter-trend PUTs.
+    qqq_bars_1m = session_bars(qqq_bars_1m)
     vwap = calculate_vwap(qqq_bars_1m)
     if not vwap or vwap == 0:
         return "neutral"

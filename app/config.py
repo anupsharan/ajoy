@@ -56,6 +56,22 @@ class Settings(BaseSettings):
     broker_stop_enabled: bool = True
     broker_tp_enabled:   bool = False    # place a resting limit sell at TP price; update when target changes
 
+    # Disaster buffer: the broker-side stop rests this fraction BELOW the
+    # bot's working stop.  Tradier stops trigger on traded prints (noisy edge
+    # of the spread) and fill at market; at the same price they would front-
+    # run the bot's smarter mid-based stop and reintroduce noise stop-outs.
+    # With the buffer, the bot handles every normal exit first — the broker
+    # stop only fills if the bot process is dead or the move gapped through
+    # a 30-second management tick.  0 = broker stop at the bot's exact level.
+    broker_stop_buffer_pct: float = 0.08
+
+    # ── Orphan auto-stop exclusions ──────────────────────────────
+    # Comma-separated underlying tickers whose orphaned Tradier positions are
+    # exempt from the auto-stop backstop in _manage_orphan_stops.
+    # Use when you want to hold a position manually after removing it from Ajoy.
+    # Example: ORPHAN_STOP_EXCLUDED_SYMBOLS=PLTR,HOOD
+    orphan_stop_excluded_symbols: str = ""
+
     # ── Risk / reward levels ─────────────────────────────────────
     # Simple percentage-based exits: close 100 % at profit target or stop.
     stop_loss_pct: float = 0.25        # exit if option drops this % below entry (e.g. 0.25 → −25%)
@@ -75,6 +91,16 @@ class Settings(BaseSettings):
     # 0.001 = 0.1%  — spreads below this are considered flat / inconclusive.
     # Set to 0.0 to require any disagreement to block (original behaviour).
     ema_1m_min_margin_pct: float = 0.001   # 0.1% minimum spread to call 1-min "trending"
+    # ── L1 EMA slope filter ───────────────────────────────────────
+    # Requires the 15-min EMA(ema_period) ITSELF to be rising for CALLs
+    # (falling for PUTs), measured over the last ema_slope_lookback completed
+    # 15-min bars.  Catches the stale-trend failure mode: price still above a
+    # flattening or declining EMA21 — the pattern behind S1's losing CALLs
+    # (−$510 live, Jun–Jul 2026).  Checks the EMA's direction, not price's
+    # position, so genuine VWAP pullbacks are unaffected.
+    ema_slope_filter_enabled: bool = True
+    ema_slope_lookback: int = 2        # completed 15-min bars (2 = 30 minutes)
+
     vwap_band_pct: float = 0.002       # 0.2 % pullback tolerance to VWAP (normal band)
     # Minimum clearance from VWAP before entry is allowed.
     # Stock must be AT LEAST this far on the correct VWAP side to enter.
@@ -419,6 +445,141 @@ class Settings(BaseSettings):
     s2_trading_start_time: str = "09:35"
     s2_last_entry_time: str = "14:15"
     s2_trading_end_time: str = "15:30"
+
+    # ══════════════════════════════════════════════════════════════
+    # Strategy 3 — Ask-Wall Breakout Scalper (STOCKS via Moomoo OpenD)
+    # ══════════════════════════════════════════════════════════════
+    # Long-only US-stock breakout scalping on tick + 10-level order book.
+    # Detects persistent ask walls that are genuinely CONSUMED by aggressive
+    # buying (not merely cancelled), and enters on price confirmation above
+    # the former wall.  Trades the S1 watchlist symbols.
+    s3_enabled: bool = False              # master on/off for the S3 engine
+
+    # ── Execution broker ──────────────────────────────────────────
+    # "tradier" (default): Moomoo OpenD supplies MARKET DATA ONLY; every
+    #     order routes to Tradier using the app's existing credentials.
+    #     Sandbox vs live follows USE_SANDBOX, same as S1/S2.
+    # "moomoo": orders go to the Moomoo account through OpenD instead
+    #     (requires s3_trd_env / s3_trade_pwd below).
+    s3_broker: str = "tradier"
+    # S3-only sandbox override, INDEPENDENT of the global USE_SANDBOX that
+    # S1/S2 follow (so S3 can paper-trade while S1/S2 stay live, or the
+    # reverse):
+    #   "inherit" → follow USE_SANDBOX (default)
+    #   "1"       → S3 orders to Tradier SANDBOX
+    #   "0"       → S3 orders to Tradier LIVE
+    s3_use_sandbox: str = "inherit"
+
+    # ── Moomoo / OpenD connection (market data) ───────────────────
+    s3_opend_host: str = "127.0.0.1"
+    s3_opend_port: int = 11111
+    # Only used when s3_broker="moomoo":
+    # SIMULATE = moomoo paper account, REAL = live money.
+    # REAL additionally requires s3_trade_pwd (trade unlock password);
+    # without it the engine runs signal-only and places no orders.
+    s3_trd_env: str = "REAL"
+    s3_trade_pwd: str = ""                # trade unlock password (secret — never exposed via /api/config)
+    s3_record_dir: str = "s3_data"        # JSONL event-recording directory (for ReplayEngine)
+    s3_record_events: bool = True         # record all normalized events + decisions
+
+    # ── Session window (ET) ───────────────────────────────────────
+    s3_trading_start_time: str = "09:40"  # no entries before (skip opening rotation)
+    s3_last_entry_time: str = "10:50"     # no NEW entries after
+    s3_flatten_time: str = "11:00"        # force-flatten every S3 position at this time
+
+    # ── Order book baseline / wall detection ─────────────────────
+    # Baseline = robust location/scale of level sizes per (symbol, side,
+    # level-band, time-of-day bucket), using median + MAD (fallback:
+    # percentiles when MAD degenerates to 0 on discrete size ladders).
+    s3_baseline_window_min: int = 20        # rolling window (minutes) for the depth baseline
+    s3_baseline_tod_bucket_min: int = 10    # time-of-day bucket size (minutes) for baseline segregation
+    s3_baseline_min_samples: int = 60       # snapshots required before walls can be flagged
+    s3_wall_abs_min_shares: int = 5000      # absolute floor: level must show at least this many shares
+    s3_wall_rel_mult: float = 5.0           # AND at least this × the robust baseline (initially 5×)
+    s3_wall_max_level: int = 3              # only walls within the top N ask levels are actionable
+    s3_wall_min_persist_sec: float = 3.0    # wall must persist at least this long …
+    s3_wall_min_updates: int = 5            # … and across at least this many book updates
+
+    # ── Consumption vs withdrawal ─────────────────────────────────
+    # consumption_ratio = matched aggressive-buy volume / initial wall size
+    # pull_ratio        = unmatched reduction        / initial wall size
+    # Reductions are matched against aggressive-buy prints at the wall price
+    # within s3_match_window_ms of the book update.  Cancelled liquidity is
+    # treated neutrally as "liquidity withdrawal" — never labelled intent.
+    s3_match_window_ms: int = 750           # tape↔book correlation window
+    s3_min_consumption_ratio: float = 0.60  # ≥60% of the wall must be genuinely traded through
+    s3_max_pull_ratio: float = 0.35         # ≤35% may vanish unmatched, else treat as withdrawal → no trade
+    s3_confirm_ticks: int = 1               # last trade must print ≥ wall + N ticks to confirm breakout
+    s3_require_ask_advance: bool = True     # best ask must move beyond the former wall price
+    # Iceberg-reload veto: a wall that REFRESHES upward by ≥ this fraction of
+    # its initial size after meaningful consumption is a seller with more
+    # behind it — the wall is discarded (no trade) and the price level is
+    # blocked from re-detection for the cooldown.  0 = disabled.
+    s3_reload_veto_frac: float = 0.25
+    s3_reload_cooldown_sec: float = 120.0
+
+    # ── Tape / order-flow gates ───────────────────────────────────
+    s3_flow_short_window_sec: float = 5.0   # short window for buy-rate acceleration
+    s3_flow_long_window_sec: float = 30.0   # long reference window
+    s3_flow_accel_mult: float = 1.5         # short-window buy rate must exceed this × long-window rate
+    s3_flow_min_imbalance: float = 0.25     # signed-volume imbalance (buys−sells)/(buys+sells) over short window
+    s3_max_spread_ticks: int = 3            # reject entries when spread is wider than N ticks
+    s3_max_spread_pct: float = 0.002        # … or wider than this fraction of price
+    s3_stale_data_max_ms: int = 1500        # reject decisions on data older than this
+    s3_halt_quiet_sec: float = 20.0         # no prints AND static book for this long → suspect halt, block entries
+
+    # ── Position sizing / risk ────────────────────────────────────
+    # shares = floor(s3_max_risk_dollars / estimated_per_share_risk)
+    # then capped by buying power, notional, participation, per-symbol
+    # and portfolio limits.
+    s3_max_risk_dollars: float = 100.0      # $ at risk at the structural stop (full position)
+    s3_max_notional: float = 15000.0        # max $ notional per position
+    s3_max_bp_fraction: float = 0.50        # use at most this fraction of available buying power
+    s3_max_participation: float = 0.05      # shares ≤ this × trailing 1-min volume
+    s3_max_open_positions: int = 2          # max concurrent S3 positions
+    s3_max_portfolio_notional: float = 25000.0  # total S3 notional cap across positions
+    s3_max_trades_per_symbol: int = 2       # max S3 entries per symbol per day
+    s3_max_daily_loss: float = 300.0        # halt S3 for the day once realized S3 P&L ≤ −this
+    # Economic-viability floor: skip entries whose capped size comes out
+    # below this share count — on high-priced symbols with small capital,
+    # 2-3 share positions cannot beat spread + slippage.  0 = disabled.
+    s3_min_shares: int = 20
+    s3_max_consecutive_losses: int = 3      # halt S3 after N consecutive losing trades
+    s3_cooldown_minutes: int = 20           # re-entry cooldown per symbol after any exit
+
+    # ── Entry / scale-in ──────────────────────────────────────────
+    s3_entry_slippage_ticks: int = 2        # marketable limit = ask + N ticks (strict cap; no chasing)
+    s3_entry_timeout_sec: float = 3.0       # cancel unfilled entry after this
+    s3_initial_tranche_pct: float = 0.50    # ~50% of risk-approved size on first confirmed breakout
+    s3_scale_window_sec: float = 3.0        # add-on only if micro-high breaks within this window
+    s3_scale_requires_flow: bool = True     # add-on also requires flow gates still passing
+
+    # ── Stops / targets (R-based) ─────────────────────────────────
+    # Stop = structural invalidation below the reclaimed wall / recent
+    # micro-swing low, widened by spread + short-horizon volatility, snapped
+    # to tick.  R = VWAP entry − initial stop.
+    s3_stop_vol_mult: float = 1.5           # stop pad = this × short-horizon volatility (per-second sigma·√horizon)
+    s3_stop_spread_pad_ticks: int = 1       # extra pad below invalidation, in ticks + current spread
+    s3_min_stop_ticks: int = 4              # reject impractically tight stops (< N ticks)
+    s3_max_stop_pct: float = 0.01           # reject stops wider than 1% of entry price
+    s3_tp1_r_mult: float = 1.0              # first scale-out at +1R (≈⅓)
+    s3_tp2_r_mult: float = 2.0              # second scale-out at +2R (≈⅓)
+    s3_breakeven_cost_ticks: int = 1        # after TP1 fill confirms, stop → entry + N ticks (est. costs)
+    s3_ema_exit_period: int = 9             # runner exits on 1-min close below this EMA
+    # Scalps must work fast: before TP1 fills, exit if no NEW post-entry high
+    # for this many seconds (0 = disabled).
+    s3_stagnation_exit_sec: float = 75.0
+    # Thesis invalidation: before TP1, a print a full tick BELOW the former
+    # wall means the reclaim failed — exit immediately, don't wait for the
+    # (lower) hard stop.
+    s3_reclaim_fail_exit: bool = True
+    s3_exit_slippage_ticks: int = 3         # marketable-limit cap for urgent exits
+    s3_exit_timeout_sec: float = 2.0        # unfilled urgent exit → cancel/replace deeper
+
+    # ── Engine hygiene ────────────────────────────────────────────
+    s3_queue_max: int = 20000               # bounded event queue size (drop-oldest + counter)
+    s3_reconnect_backoff_sec: float = 2.0   # initial reconnect backoff (doubles, capped 60s)
+    s3_kill_switch: bool = False            # manual kill switch — flatten & halt when flipped on
 
     # ── Convenience aliases for parsed HH:MM fields ──────────────
     @property

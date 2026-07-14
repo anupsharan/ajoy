@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.routers import config, history, indicators, symbols, trades
 from app.services.indicators import seed_indicators
 from app.services.scheduler import start_scheduler, stop_scheduler
+from app.services.s3.engine import s3_status, start_s3_engine, stop_s3_engine
 from app.services.tradier import close_tradier_client
 
 # ── File logging ─────────────────────────────────────────────────────────
@@ -55,7 +56,9 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await seed_indicators(db)
     start_scheduler()
+    start_s3_engine()
     yield
+    stop_s3_engine()
     stop_scheduler()
     await close_tradier_client()
 
@@ -87,6 +90,12 @@ async def patch_trade_pnl(trade_id: int, exit_price: float, pnl: float):
         await db.commit()
         return JSONResponse({"patched": True, "trade_id": trade_id, "old": old,
                              "new": {"exit_price": exit_price, "pnl": pnl}})
+
+
+@app.get("/api/s3/status")
+def get_s3_status():
+    """Live S3 engine state, capability report and data-quality counters."""
+    return s3_status()
 
 
 @app.get("/", response_class=HTMLResponse)

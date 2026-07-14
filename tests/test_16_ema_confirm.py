@@ -139,7 +139,8 @@ class TestCheckEntrySignalEmaConfirm:
         vwap = calculate_vwap(bars_15m)
         bars_1m = [make_bar(vwap * 1.001) for _ in range(30)]
 
-        with patch.object(settings, "ema_consecutive_bars", 2):
+        with patch.object(settings, "ema_consecutive_bars", 2), \
+             patch.object(settings, "vwap_min_clearance_pct", 0.0):
             result = check_entry_signal(bars_1m, bars_15m)
         assert result is not None
         assert result.direction == "CALL"

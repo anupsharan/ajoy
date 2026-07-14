@@ -247,6 +247,41 @@ async def test_s1_runner_activates_near_tp_with_momentum(db_env):
 
 
 @pytest.mark.asyncio
+async def test_runner_never_waives_manual_tp(db_env):
+    """GOOGL #140 regression: a HUMAN-set TP must survive runner conditions."""
+    db, Session = db_env
+    trade = _mk_trade(tp2=2.50)
+    trade.tp_manual = True
+    db.add(trade); await db.commit()
+
+    client = _client(opt_bid=2.45, opt_ask=2.55)          # in the runner zone
+    with _manage_env(Session, client, rising_bars(150.0, 10, 0.05)):
+        await manage_open_trades()
+
+    await db.refresh(trade)
+    assert trade.runner_mode is False
+    assert trade.tp2_price == pytest.approx(2.50)          # target untouched
+    assert trade.status == TradeStatus.OPEN                # bid 2.45 < 2.50
+
+
+@pytest.mark.asyncio
+async def test_runner_floor_never_below_entry(db_env):
+    """GOOGL #140 regression: activation floor clamps to entry+1%."""
+    db, Session = db_env
+    trade = _mk_trade(tp2=2.20, stop=1.62)                # tight TP near entry
+    db.add(trade); await db.commit()
+
+    # bid 2.12 ≥ 2.20×0.95; mid 2.14 → plain floor 1.97 < entry 2.00 → clamp 2.02
+    client = _client(opt_bid=2.12, opt_ask=2.16)
+    with _manage_env(Session, client, rising_bars(150.0, 10, 0.05)):
+        await manage_open_trades()
+
+    await db.refresh(trade)
+    assert trade.runner_mode is True
+    assert trade.stop_price == pytest.approx(2.02)         # entry × 1.01
+
+
+@pytest.mark.asyncio
 async def test_s1_tp_fires_normally_when_momentum_faded(db_env):
     """At the TP but last completed candle is red → runner NOT activated, TP2 exit."""
     db, Session = db_env
@@ -430,9 +465,74 @@ async def test_chop_gate_blocks_low_range_day(db_env):
     with patch.object(settings, "chop_filter_enabled", True), \
          patch.object(settings, "chop_min_range_ratio", 0.5), \
          patch.object(settings, "chop_filter_start_time", "00:00"), \
-         patch("app.services.scheduler._get_daily_atr", new=AsyncMock(return_value=5.0)):
+         patch("app.services.scheduler._get_daily_atr", new=AsyncMock(return_value=(5.0, 0.0))):
         blocked = await sched._chop_gate_blocks(client, qqq)
     assert blocked is True
+
+
+# ===========================================================================
+# External-close reconciliation on rejected sells (SOFI #137 regression)
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_rejected_sell_reconciles_when_position_gone(db_env):
+    """
+    Close attempt → Tradier REJECTS the sell → position absent from the
+    account but an external fill exists → trade reconciled as MANUAL at the
+    actual fill instead of staying stuck OPEN.
+    """
+    from app.services.scheduler import _close_trade
+    from app.services.tradier import Position
+    db, _ = db_env
+    trade = _mk_trade(tp2=None, stop=1.62)
+    trade.stop_order_id = "zombie1"
+    db.add(trade); await db.commit()
+
+    client = _client(opt_bid=1.50, opt_ask=1.60)
+    client.get_order_status = AsyncMock(return_value={"status": "rejected"})
+    client.get_fill_price   = AsyncMock(return_value=None)
+    # Another position exists (positive confirmation the fetch worked),
+    # but NOT this trade's contract.
+    client.get_positions = AsyncMock(return_value=[
+        Position(symbol="OTHER240119C00100000", quantity=1, cost_basis=100.0,
+                 date_acquired=None),
+    ])
+    client.get_last_sell_fill = AsyncMock(return_value=2.60)
+
+    with patch.object(settings, "exit_limit_orders_enabled", False):
+        ok = await _close_trade(db, client, trade, ExitReason.CUTOFF, 1.50)
+
+    assert ok is True
+    await db.refresh(trade)
+    assert trade.status == TradeStatus.CLOSED
+    assert trade.exit_reason == ExitReason.MANUAL       # closed outside Ajoy
+    assert trade.exit_price == pytest.approx(2.60)      # actual external fill
+    client.cancel_order.assert_any_call("zombie1")      # zombie stop cleaned up
+
+
+@pytest.mark.asyncio
+async def test_rejected_sell_stays_open_when_position_still_live(db_env):
+    """Position still exists at the broker → rejection keeps the trade OPEN."""
+    from app.services.scheduler import _close_trade
+    from app.services.tradier import Position
+    db, _ = db_env
+    trade = _mk_trade(tp2=None, stop=1.62)
+    db.add(trade); await db.commit()
+
+    client = _client(opt_bid=1.50, opt_ask=1.60)
+    client.get_order_status = AsyncMock(return_value={"status": "rejected"})
+    client.get_fill_price   = AsyncMock(return_value=None)
+    client.get_positions = AsyncMock(return_value=[
+        Position(symbol=trade.option_symbol, quantity=2, cost_basis=400.0,
+                 date_acquired=None),
+    ])
+
+    with patch.object(settings, "exit_limit_orders_enabled", False):
+        ok = await _close_trade(db, client, trade, ExitReason.CUTOFF, 1.50)
+
+    assert ok is False
+    await db.refresh(trade)
+    assert trade.status == TradeStatus.OPEN
 
 
 # ===========================================================================
@@ -552,6 +652,71 @@ async def test_exit_limit_partial_fill_books_slice_exactly(db_env):
     assert client.place_option_order.call_args_list[1].kwargs["quantity"] == 3
 
 
+# ===========================================================================
+# Broker disaster stop — buffered below the bot stop
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_broker_stop_placed_with_disaster_buffer(db_env):
+    """Broker stop rests broker_stop_buffer_pct BELOW the bot's working stop."""
+    from app.services.scheduler import _place_broker_stop
+    db, _ = db_env
+    trade = _mk_trade(stop=2.00, tp2=3.00)
+    db.add(trade); await db.commit()
+
+    client = _client()
+    with patch.object(settings, "broker_stop_buffer_pct", 0.08):
+        await _place_broker_stop(db, client, trade)
+
+    kwargs = client.place_option_order.call_args.kwargs
+    assert kwargs["order_type"] == "stop"
+    assert kwargs["stop_price"] == pytest.approx(1.84)   # 2.00 × 0.92
+    assert trade.stop_order_id == "ord1"
+
+
+def test_broker_stop_price_floor():
+    from app.services.scheduler import _broker_stop_price
+    with patch.object(settings, "broker_stop_buffer_pct", 0.08):
+        assert _broker_stop_price(2.00) == pytest.approx(1.84)
+        assert _broker_stop_price(0.01) == 0.01   # never below a cent
+    with patch.object(settings, "broker_stop_buffer_pct", 0.0):
+        assert _broker_stop_price(2.00) == pytest.approx(2.00)
+
+
+# ===========================================================================
+# External-close reconciliation — actual fill parsing
+# ===========================================================================
+
+class TestExtractLastSellFill:
+    from app.services.tradier import extract_last_sell_fill as _f
+
+    def test_finds_latest_filled_sell(self):
+        from app.services.tradier import extract_last_sell_fill
+        orders = [
+            {"status": "filled", "side": "sell_to_close", "option_symbol": "NFLX260710P00076000",
+             "avg_fill_price": 0.95, "transaction_date": "2026-07-08T15:00:00Z"},
+            {"status": "filled", "side": "sell_to_close", "option_symbol": "NFLX260710P00076000",
+             "avg_fill_price": 0.88, "transaction_date": "2026-07-08T16:30:00Z"},
+        ]
+        assert extract_last_sell_fill(orders, "NFLX260710P00076000") == pytest.approx(0.88)
+
+    def test_ignores_buys_unfilled_and_other_symbols(self):
+        from app.services.tradier import extract_last_sell_fill
+        orders = [
+            {"status": "filled", "side": "buy_to_open", "option_symbol": "X", "avg_fill_price": 1.0},
+            {"status": "canceled", "side": "sell_to_close", "option_symbol": "X", "avg_fill_price": 1.1},
+            {"status": "filled", "side": "sell_to_close", "option_symbol": "Y", "avg_fill_price": 1.2},
+        ]
+        assert extract_last_sell_fill(orders, "X") is None
+
+    def test_empty_and_malformed(self):
+        from app.services.tradier import extract_last_sell_fill
+        assert extract_last_sell_fill([], "X") is None
+        assert extract_last_sell_fill(
+            [{"status": "filled", "side": "sell", "symbol": "X", "avg_fill_price": "bad"}], "X"
+        ) is None
+
+
 @pytest.mark.asyncio
 async def test_chop_gate_passes_trend_day(db_env):
     sched._chop_cache = None
@@ -560,6 +725,6 @@ async def test_chop_gate_passes_trend_day(db_env):
     with patch.object(settings, "chop_filter_enabled", True), \
          patch.object(settings, "chop_min_range_ratio", 0.5), \
          patch.object(settings, "chop_filter_start_time", "00:00"), \
-         patch("app.services.scheduler._get_daily_atr", new=AsyncMock(return_value=5.0)):
+         patch("app.services.scheduler._get_daily_atr", new=AsyncMock(return_value=(5.0, 0.0))):
         blocked = await sched._chop_gate_blocks(client, qqq)
     assert blocked is False

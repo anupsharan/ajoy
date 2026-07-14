@@ -21,6 +21,7 @@ function ajoy() {
     newTicker: '',
     newSymbolS1: true,
     newSymbolS2: true,
+    newSymbolS3: true,
 
     // ── Indicators ───────────────────────────────────────────────
     indicators: [],
@@ -89,7 +90,8 @@ function ajoy() {
           { key: 'max_open_trades',  label: 'Max Open Trades',      hint: 'Concurrent positions cap',        type: 'number', step: 1 },
           { key: 'stop_loss_pct',    label: 'Stop Loss (decimal)',  hint: '0.27 = -27% from entry. FALLBACK only while Structural Levels are on (used when delta is unavailable)', type: 'number', step: 0.01 },
           { key: 'take_profit_pct',  label: 'Take Profit (decimal)',hint: '0.35 = +35% from entry. FALLBACK only while Structural Levels are on', type: 'number', step: 0.01 },
-          { key: 'broker_stop_enabled', label: 'Broker-Side Stop',  hint: 'Resting stop order at Tradier — protects position if bot goes down', type: 'bool' },
+          { key: 'broker_stop_enabled', label: 'Broker Disaster Stop',  hint: 'Resting stop at Tradier, BUFFERED below the bot stop — only fills if the bot is down or the move gaps through a tick. Bot handles normal exits', type: 'bool' },
+          { key: 'broker_stop_buffer_pct', label: 'Disaster Stop Buffer',  hint: 'Broker stop = bot stop × (1 − this). 0.08 = 8% below — unreachable in normal operation, prevents noise prints from front-running the smart bot stop', type: 'number', step: 0.01 },
           { key: 'broker_tp_enabled',   label: 'Broker-Side TP',    hint: 'Resting limit sell at TP price — auto-fills at target even if bot is down; updating Target in Open Positions also updates this order', type: 'bool' },
         ],
       },
@@ -101,6 +103,8 @@ function ajoy() {
           { key: 'vwap_min_clearance_pct', label: 'VWAP Min Clearance',      hint: 'Stock must be at least this far from VWAP on the correct side — blocks AT RISK entries (0.002 = 0.2%). Set 0 to disable.', type: 'number', step: 0.001 },
           { key: 'ema_period',              label: 'EMA Period',              hint: 'Trend direction (default 21)',                                                    type: 'number', step: 1 },
           { key: 'ema_consecutive_bars',  label: 'EMA Confirm Bars',       hint: 'Consecutive bars on correct EMA side',                                           type: 'number', step: 1 },
+          { key: 'ema_slope_filter_enabled', label: 'EMA Slope Filter',    hint: 'The 15-min EMA itself must be rising (CALL) / falling (PUT) — blocks stale trends where price sits above a flattening EMA. Pullbacks unaffected', type: 'bool' },
+          { key: 'ema_slope_lookback',       label: 'EMA Slope Lookback',  hint: 'Completed 15-min bars the EMA must have risen/fallen over (2 = 30 min)', type: 'number', step: 1 },
           { key: 'ema_1m_min_margin_pct', label: '1-min EMA Min Margin',   hint: 'Min EMA9-EMA21 spread on 1-min to count as trending — below this = neutral, 15-min decides (0.001 = 0.1%)', type: 'number', step: 0.001 },
           { key: 'bounce_bars_required',  label: 'Bounce Bars',           hint: 'VWAP bounce confirmation bars (L2)',       type: 'number', step: 1 },
         ],
@@ -193,8 +197,8 @@ function ajoy() {
         id: 'chop',
         label: 'Chop-Day Filter (S1 + S2)',
         fields: [
-          { key: 'chop_filter_enabled',    label: 'Chop Filter',            hint: 'Block ALL new entries while QQQ session range < ratio × daily ATR — pullback setups need a trending day', type: 'bool' },
-          { key: 'chop_min_range_ratio',   label: 'Min Range / ATR Ratio',   hint: 'QQQ must have covered this fraction of its normal daily range (0.5 = 50%). Lower to 0.4 if too few trades', type: 'number', step: 0.05 },
+          { key: 'chop_filter_enabled',    label: 'Chop Filter',            hint: 'Block ALL new entries while QQQ TRUE range (incl. overnight gap) < ratio × daily ATR — pullback setups need a trending day', type: 'bool' },
+          { key: 'chop_min_range_ratio',   label: 'Min Range / ATR Ratio',   hint: 'QQQ true range (gap included) must reach this fraction of ATR(14) (0.5 = 50%). Lower to 0.4 if too few trades', type: 'number', step: 0.05 },
           { key: 'chop_atr_period',        label: 'ATR Period (days)',       hint: 'Daily bars used for the ATR baseline (default 14)', type: 'number', step: 1 },
           { key: 'chop_filter_start_time', label: 'Filter Start (ET)',       hint: 'Filter passes before this time — session range is naturally small right after the open', type: 'time' },
         ],
@@ -211,6 +215,7 @@ function ajoy() {
           { key: 's2_cooldown_minutes',   label: 'Cooldown (min)',           hint: 'Re-entry wait after stop or EMA cross exit on this symbol',                              type: 'number', step: 1 },
           { key: 's2_max_spread_pct',     label: 'Max Option Spread (%)',    hint: 'Skip contract if (ask−bid)/mid exceeds this. 0.10 = 10% — filters illiquid strikes',     type: 'number', step: 0.01 },
           { key: 's2_max_trades_per_day', label: 'Max Trades / Symbol / Day',hint: 'Cap on S2 entries per symbol per day — multiple pullbacks allowed. 0 = no cap',         type: 'number', step: 1 },
+          { key: 's2_cross_max_bars_old', label: 'Cross Freshness (bars)',   hint: 'Max age of the EMA9/21 cross in 5-min bars, counted within TODAY only — prior-day crosses always block. 40 passes any same-day cross through a 12:30 window. 0 = disabled', type: 'number', step: 1 },
           { key: 's2_puts_enabled',       label: 'PUT Entries',              hint: 'Kill switch for the S2 PUT side (live Jun–Jul: PUTs 4W/14L, −$554 — all on dips inside uptrends)', type: 'bool' },
           { key: 's2_put_15m_strict',     label: 'Strict PUT 15-min Gate',   hint: 'PUT requires a confirmed BEARISH 15-min trend — neutral or missing data blocks. CALL side unchanged', type: 'bool' },
         ],
@@ -239,6 +244,89 @@ function ajoy() {
           { key: 's2_structure_exit_enabled',     label: 'Structure Exit',             hint: '1-min closes back through the 5-min EMA9 close the trade in 2–3 min. Off = legacy 5-min EMA9/21 cross (10–15 min lag, never beat the stop)', type: 'bool' },
           { key: 's2_structure_exit_bars',        label: 'Structure Exit Bars',        hint: 'Consecutive completed 1-min closes through EMA9 required (2 filters single wicks)', type: 'number', step: 1 },
           { key: 's2_structure_exit_margin_pct',  label: 'Structure Exit Margin',      hint: 'Close must be this far beyond EMA9 to count as broken (0.0005 = 0.05%)', type: 'number', step: 0.0005 },
+        ],
+      },
+      {
+        id: 's3_core',
+        label: 'S3 — Ask-Wall Breakout (Stocks · Moomoo): Core',
+        fields: [
+          { key: 's3_enabled',               label: 'S3 Enabled',            hint: 'Master switch — starts the Moomoo tick/L2 engine at app startup (restart required to start/stop the engine)', type: 'bool' },
+          { key: 's3_kill_switch',           label: 'Kill Switch',           hint: 'Flip ON to flatten every S3 position immediately and halt entries (hot — no restart)', type: 'bool' },
+          { key: 's3_trading_start_time',    label: 'Start Time (ET)',       hint: 'No S3 entries before this (skips the opening rotation)',            type: 'time' },
+          { key: 's3_last_entry_time',       label: 'Last Entry Time (ET)',  hint: 'No NEW S3 entries after this',                                       type: 'time' },
+          { key: 's3_flatten_time',          label: 'Flatten Time (ET)',     hint: 'Every S3 position force-closed at this time',                        type: 'time' },
+          { key: 's3_record_events',         label: 'Record Events',         hint: 'Write all ticks/books/decisions to s3_data/*.jsonl for the ReplayEngine', type: 'bool' },
+        ],
+      },
+      {
+        id: 's3_wall',
+        label: 'S3 — Wall Detection & Consumption',
+        fields: [
+          { key: 's3_wall_abs_min_shares',     label: 'Wall Abs Min (shares)',   hint: 'Ask level must show at least this many shares to be a wall candidate',        type: 'number', step: 500 },
+          { key: 's3_wall_rel_mult',           label: 'Wall Rel Multiple (×)',   hint: 'AND at least this × the robust median/MAD depth baseline (initially 5×)',     type: 'number', step: 0.5 },
+          { key: 's3_wall_max_level',          label: 'Max Wall Level',          hint: 'Only walls within the top N ask levels are actionable',                       type: 'number', step: 1 },
+          { key: 's3_wall_min_persist_sec',    label: 'Min Persistence (s)',     hint: 'Wall must survive this long before it counts',                                type: 'number', step: 0.5 },
+          { key: 's3_wall_min_updates',        label: 'Min Book Updates',        hint: '…and across at least this many book updates',                                 type: 'number', step: 1 },
+          { key: 's3_min_consumption_ratio',   label: 'Min Consumption Ratio',   hint: 'Matched aggressive-buy volume / initial wall size must reach this (0.60 = 60%) before a breakout is tradeable', type: 'number', step: 0.05 },
+          { key: 's3_max_pull_ratio',          label: 'Max Pull Ratio',          hint: 'If more than this fraction of the wall vanishes UNMATCHED it is liquidity withdrawal — no trade', type: 'number', step: 0.05 },
+          { key: 's3_confirm_ticks',           label: 'Confirm Ticks',           hint: 'A print must land at least N ticks above the former wall to confirm',         type: 'number', step: 1 },
+          { key: 's3_reload_veto_frac',        label: 'Reload Veto Fraction',    hint: 'Wall refreshing by ≥ this × initial size after consumption = iceberg — vetoed, no trade. 0 = off', type: 'number', step: 0.05 },
+          { key: 's3_reload_cooldown_sec',     label: 'Reload Cooldown (s)',     hint: 'A vetoed price level cannot be re-detected as a wall for this long',          type: 'number', step: 30 },
+          { key: 's3_baseline_window_min',     label: 'Baseline Window (min)',   hint: 'Rolling window for the median/MAD depth baseline',                            type: 'number', step: 5 },
+          { key: 's3_baseline_min_samples',    label: 'Baseline Min Samples',    hint: 'Book snapshots required before walls can be flagged',                         type: 'number', step: 10 },
+        ],
+      },
+      {
+        id: 's3_flow',
+        label: 'S3 — Order Flow & Data Quality',
+        fields: [
+          { key: 's3_flow_short_window_sec',  label: 'Flow Short Window (s)',  hint: 'Short window for the aggressive-buy rate',                                     type: 'number', step: 1 },
+          { key: 's3_flow_long_window_sec',   label: 'Flow Long Window (s)',   hint: 'Long reference window',                                                        type: 'number', step: 5 },
+          { key: 's3_flow_accel_mult',        label: 'Acceleration (×)',       hint: 'Short-window buy rate must exceed this × the long-window rate',                type: 'number', step: 0.1 },
+          { key: 's3_flow_min_imbalance',     label: 'Min Imbalance',          hint: '(buys − sells) / (buys + sells) over the short window (0.25 = 25% net buying)', type: 'number', step: 0.05 },
+          { key: 's3_max_spread_ticks',       label: 'Max Spread (ticks)',     hint: 'Reject entries when the spread is wider than N ticks',                          type: 'number', step: 1 },
+          { key: 's3_max_spread_pct',         label: 'Max Spread (fraction)',  hint: '…or wider than this fraction of price (0.002 = 0.2%)',                          type: 'number', step: 0.001 },
+          { key: 's3_stale_data_max_ms',      label: 'Stale Data Max (ms)',    hint: 'Reject decisions on market data older than this',                               type: 'number', step: 100 },
+          { key: 's3_halt_quiet_sec',         label: 'Halt Quiet (s)',         hint: 'Static book + silent tape for this long → suspected halt, entries blocked',     type: 'number', step: 5 },
+        ],
+      },
+      {
+        id: 's3_risk',
+        label: 'S3 — Risk & Sizing',
+        fields: [
+          { key: 's3_max_risk_dollars',        label: 'Max Risk ($)',            hint: 'shares = floor(this / per-share risk at the structural stop)',           type: 'number', step: 10 },
+          { key: 's3_max_notional',            label: 'Max Notional ($)',        hint: 'Cap on position value',                                                  type: 'number', step: 500 },
+          { key: 's3_max_bp_fraction',         label: 'Max BP Fraction',         hint: 'Use at most this fraction of available buying power',                    type: 'number', step: 0.05 },
+          { key: 's3_max_participation',       label: 'Max Participation',       hint: 'Shares ≤ this × trailing 1-min volume (0.05 = 5%)',                      type: 'number', step: 0.01 },
+          { key: 's3_max_open_positions',      label: 'Max Open Positions',      hint: 'Concurrent S3 positions',                                                type: 'number', step: 1 },
+          { key: 's3_max_portfolio_notional',  label: 'Max Portfolio Notional',  hint: 'Total S3 notional across positions',                                     type: 'number', step: 1000 },
+          { key: 's3_max_trades_per_symbol',   label: 'Max Trades / Symbol',     hint: 'S3 entries per symbol per day',                                          type: 'number', step: 1 },
+          { key: 's3_min_shares',              label: 'Min Shares (viability)',  hint: 'Skip entries sized below this share count — tiny positions on expensive stocks cannot beat spread+slippage. 0 = off', type: 'number', step: 5 },
+          { key: 's3_max_daily_loss',          label: 'Max Daily Loss ($)',      hint: 'Halt S3 for the day once realized S3 P&L hits −this',                    type: 'number', step: 50 },
+          { key: 's3_max_consecutive_losses',  label: 'Max Consecutive Losses',  hint: 'Halt S3 after N losers in a row',                                        type: 'number', step: 1 },
+          { key: 's3_cooldown_minutes',        label: 'Cooldown (min)',          hint: 'Per-symbol re-entry wait after any exit',                                type: 'number', step: 5 },
+        ],
+      },
+      {
+        id: 's3_exec',
+        label: 'S3 — Entry, Stops & Exits',
+        fields: [
+          { key: 's3_entry_slippage_ticks',   label: 'Entry Slippage Cap (ticks)', hint: 'Marketable limit = ask + N ticks. Strict cap — never a market order, never a passive bid below the wall', type: 'number', step: 1 },
+          { key: 's3_entry_timeout_sec',      label: 'Entry Timeout (s)',          hint: 'Cancel unfilled entries after this',                                    type: 'number', step: 0.5 },
+          { key: 's3_initial_tranche_pct',    label: 'Initial Tranche',            hint: 'Fraction bought on the first confirmed breakout (0.50 = 50%)',          type: 'number', step: 0.05 },
+          { key: 's3_scale_window_sec',       label: 'Scale-In Window (s)',        hint: 'Add-on only if the post-entry micro-high breaks within this (initially 3s)', type: 'number', step: 0.5 },
+          { key: 's3_scale_requires_flow',    label: 'Scale Needs Flow',           hint: 'Add-on also requires order flow still accelerating',                    type: 'bool' },
+          { key: 's3_stop_vol_mult',          label: 'Stop Vol Multiple',          hint: 'Stop pad includes this × short-horizon volatility',                     type: 'number', step: 0.25 },
+          { key: 's3_min_stop_ticks',         label: 'Min Stop (ticks)',           hint: 'Reject impractically tight stops',                                      type: 'number', step: 1 },
+          { key: 's3_max_stop_pct',           label: 'Max Stop (fraction)',        hint: 'Reject stops wider than this fraction of entry (0.01 = 1%)',            type: 'number', step: 0.001 },
+          { key: 's3_tp1_r_mult',             label: 'TP1 (R multiple)',           hint: '≈⅓ off at +this × R (R = VWAP entry − initial stop)',                   type: 'number', step: 0.25 },
+          { key: 's3_tp2_r_mult',             label: 'TP2 (R multiple)',           hint: '≈⅓ off at +this × R',                                                   type: 'number', step: 0.25 },
+          { key: 's3_breakeven_cost_ticks',   label: 'Breakeven + Costs (ticks)',  hint: 'After TP1 fill CONFIRMS, stop → entry + N ticks (est. costs). Stop only ever moves UP', type: 'number', step: 1 },
+          { key: 's3_ema_exit_period',        label: 'Runner EMA Period',          hint: 'Runner exits on a completed 1-min close below this EMA',                type: 'number', step: 1 },
+          { key: 's3_stagnation_exit_sec',    label: 'Stagnation Exit (s)',        hint: 'Before TP1: exit if no NEW post-entry high for this long — scalps must work fast. 0 = off', type: 'number', step: 15 },
+          { key: 's3_reclaim_fail_exit',      label: 'Reclaim-Fail Exit',          hint: 'Before TP1: a print a full tick below the former wall exits immediately instead of riding to the stop', type: 'bool' },
+          { key: 's3_exit_slippage_ticks',    label: 'Exit Slippage Cap (ticks)',  hint: 'Urgent exits: marketable limit = bid − N ticks; unfilled → cancel and go deeper', type: 'number', step: 1 },
+          { key: 's3_exit_timeout_sec',       label: 'Exit Timeout (s)',           hint: 'Unfilled urgent exit is cancelled/replaced after this',                 type: 'number', step: 0.5 },
         ],
       },
     ],
@@ -293,11 +381,12 @@ function ajoy() {
     },
     async addSymbol() {
       if (!this.newTicker.trim()) return;
-      if (!this.newSymbolS1 && !this.newSymbolS2) return;
+      if (!this.newSymbolS1 && !this.newSymbolS2 && !this.newSymbolS3) return;
       await this.api('POST', '/api/symbols', {
         ticker: this.newTicker.trim().toUpperCase(),
         s1_enabled: this.newSymbolS1,
         s2_enabled: this.newSymbolS2,
+        s3_enabled: this.newSymbolS3,
       });
       this.newTicker = '';
       await this.loadSymbols();
@@ -312,6 +401,10 @@ function ajoy() {
     },
     async toggleS2(s) {
       await this.api('PATCH', `/api/symbols/${s.id}`, { s2_enabled: !s.s2_enabled });
+      await this.loadSymbols();
+    },
+    async toggleS3(s) {
+      await this.api('PATCH', `/api/symbols/${s.id}`, { s3_enabled: !s.s3_enabled });
       await this.loadSymbols();
     },
     async deleteSymbol(id) {

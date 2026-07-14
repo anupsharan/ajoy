@@ -11,7 +11,9 @@ from app.database import get_db
 from app.models import Direction, ExitReason, Trade, TradeStatus
 from app.schemas import CloseTradeRequest, TradeOut, TradeWithLivePnL
 from app.services.tradier import get_tradier_client
-from app.services.strategy import calculate_ema, completed_bars, compute_trade_levels, ema_direction
+from app.services.strategy import (
+    calculate_ema, completed_bars, compute_trade_levels, ema_direction, session_bars,
+)
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
@@ -132,11 +134,15 @@ async def _enrich_with_live_pnl(trade: Trade) -> TradeWithLivePnL:
             if current is not None:
                 enriched.current_price = round(current, 2)
                 qty = trade.remaining_qty or trade.quantity
-                unrealized = (current - trade.entry_price) * qty * 100
+                # S3 rows are STOCKS (option_symbol holds the ticker, so the
+                # quote above is the equity quote): per-share P&L, no ×100
+                # options contract multiplier.
+                mult = 1 if trade.strategy_name == "S3" else 100
+                unrealized = (current - trade.entry_price) * qty * mult
                 realized = trade.pnl or 0.0
                 enriched.live_pnl = round(realized + unrealized, 2)
                 if trade.entry_price:
-                    original_cost = trade.entry_price * trade.quantity * 100
+                    original_cost = trade.entry_price * trade.quantity * mult
                     if original_cost:
                         enriched.live_pnl_pct = round(
                             enriched.live_pnl / original_cost * 100, 2
@@ -230,11 +236,15 @@ async def _enrich_with_live_pnl(trade: Trade) -> TradeWithLivePnL:
             )
             vwap_now: Optional[float] = None
             if bars_1m:
-                total_vol = sum(b.volume for b in bars_1m if b.volume and b.volume > 0)
+                # Session bars only — the raw fetch spans multiple days and a
+                # blended VWAP misstates the thesis (NFLX #134 showed INTACT
+                # on a PUT while trading ABOVE its true session VWAP).
+                _sess = session_bars(bars_1m)
+                total_vol = sum(b.volume for b in _sess if b.volume and b.volume > 0)
                 if total_vol > 0:
                     tp_vol = sum(
                         (b.high + b.low + b.close) / 3.0 * b.volume
-                        for b in bars_1m if b.volume and b.volume > 0
+                        for b in _sess if b.volume and b.volume > 0
                     )
                     vwap_now = round(tp_vol / total_vol, 2)
 
@@ -299,6 +309,16 @@ async def manual_close_trade(
         raise HTTPException(status_code=404, detail="Trade not found")
     if trade.status != TradeStatus.OPEN:
         raise HTTPException(status_code=400, detail="Trade is already closed")
+    if trade.strategy_name == "S3":
+        # S3 positions are stocks owned by the S3 engine's own OMS — the
+        # option sell path below would mis-route the order and desync the
+        # engine's state.  Flatten via the S3 kill switch (Settings → S3),
+        # or use /mark-closed for a bookkeeping-only correction.
+        raise HTTPException(
+            status_code=400,
+            detail="S3 trades are managed by the S3 engine. Use the S3 kill "
+                   "switch to flatten, or /mark-closed for bookkeeping.",
+        )
 
     client = get_tradier_client()
     qty = trade.remaining_qty or trade.quantity
@@ -370,6 +390,14 @@ async def manual_close_trade(
         order_status_str  = "unknown"
 
     if order_status_str in ("rejected", "canceled", "cancelled"):
+        # Rejected sells usually mean the position was already closed outside
+        # Ajoy (manual Tradier sell / disaster-stop fill).  Verify and
+        # reconcile with the actual external fill instead of erroring out —
+        # this is what made the Close button appear "broken" on SOFI #137.
+        from app.services.scheduler import _reconcile_external_close
+        if await _reconcile_external_close(db, client, trade):
+            await db.refresh(trade)
+            return trade
         raise HTTPException(
             status_code=502,
             detail=(
@@ -443,20 +471,64 @@ async def mark_trade_closed(
     if trade.status != TradeStatus.OPEN:
         raise HTTPException(status_code=400, detail="Trade is already closed")
 
+    client = get_tradier_client()
+
+    # ── Cancel any resting broker orders first ────────────────────────────
+    # The position is already flat at Tradier; an orphaned disaster stop or
+    # TP limit would otherwise sit there as a zombie order (SOFI #137 left
+    # stop order 136295991 resting after a manual close).
+    for _oid_attr in ("stop_order_id", "tp_order_id"):
+        _oid = getattr(trade, _oid_attr)
+        if _oid:
+            try:
+                await client.cancel_order(_oid)
+                _enrich_logger.info(
+                    "[%s] mark-closed: cancelled resting broker order %s for trade %d",
+                    trade.symbol, _oid, trade.id,
+                )
+            except Exception as _exc:
+                _enrich_logger.warning(
+                    "[%s] mark-closed: could not cancel broker order %s: %s — "
+                    "check Tradier for zombie orders",
+                    trade.symbol, _oid, _exc,
+                )
+            setattr(trade, _oid_attr, None)
+
     # Resolve exit price
     exit_price: Optional[float] = payload.exit_price
 
     if exit_price is None:
-        # Try to fetch current bid from Tradier
+        # 1) The ACTUAL closing fill from the broker's order history — the
+        #    position was closed outside Ajoy, so the truth lives at Tradier,
+        #    not in the current quote.
         try:
-            client = get_tradier_client()
-            q = await client.get_option_quote(trade.option_symbol)
-            if q and q.bid and q.bid > 0:
-                exit_price = round(q.bid, 2)
-            elif q and q.last and q.last > 0:
-                exit_price = round(q.last, 2)
+            exit_price = await client.get_last_sell_fill(trade.option_symbol)
+            if exit_price:
+                _enrich_logger.info(
+                    "[%s] mark-closed: using actual Tradier fill $%.2f for trade %d",
+                    trade.symbol, exit_price, trade.id,
+                )
         except Exception:
-            pass
+            exit_price = None
+        # 2) Fallback: current bid — an ESTIMATE, not a fill.  Warn loudly so
+        #    a mis-stated P&L is traceable (NFLX #134 was recorded +$30 from a
+        #    bounced quote while the real fill was −$50).
+        if exit_price is None:
+            try:
+                q = await client.get_option_quote(trade.option_symbol)
+                if q and q.bid and q.bid > 0:
+                    exit_price = round(q.bid, 2)
+                elif q and q.last and q.last > 0:
+                    exit_price = round(q.last, 2)
+                if exit_price:
+                    _enrich_logger.warning(
+                        "[%s] mark-closed: no fill found in order history — "
+                        "recording ESTIMATED exit $%.2f from live quote for trade %d. "
+                        "Verify against Tradier order history.",
+                        trade.symbol, exit_price, trade.id,
+                    )
+            except Exception:
+                pass
 
     if not exit_price:
         exit_price = trade.entry_price   # last-resort: record at cost
@@ -528,6 +600,13 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
     Compare Tradier sandbox open positions against Ajoy open trades.
     Enriches orphaned positions with current live price and estimated P&L.
     """
+    from app.config import settings as _cfg
+    _excluded_tickers: set[str] = {
+        s.strip().upper()
+        for s in _cfg.orphan_stop_excluded_symbols.split(",")
+        if s.strip()
+    }
+
     client = get_tradier_client()
 
     try:
@@ -576,6 +655,11 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
             except Exception:
                 pass
 
+            # Determine if this orphan is excluded from auto-stop
+            _underlying = re.match(r'^([A-Z]+)', sym)
+            _ticker = _underlying.group(1) if _underlying else ""
+            _excluded = _ticker in _excluded_tickers
+
             orphaned.append({
                 "symbol": sym,
                 "qty": qty,
@@ -583,6 +667,7 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
                 "cost_basis_total": cost_basis_total,
                 "current_price": current_price,
                 "live_pnl": live_pnl,
+                "auto_stop_excluded": _excluded,
             })
 
     for sym, trade in ajoy_by_symbol.items():
@@ -684,27 +769,37 @@ async def update_trade_levels(
     direction = trade.direction.value if hasattr(trade.direction, "value") else str(trade.direction)
 
     # ── Validate new levels ───────────────────────────────────────────────
+    # NOTE (Jul 9 2026): stops legitimately sit ABOVE entry on winning trades
+    # (breakeven lock, trailing, runner mode) and a TP below entry is a valid
+    # "get me out on a bounce" order.  The old entry-anchored rules made every
+    # profit-locked trade uneditable (SOFI #137: 422 because the runner trail
+    # held the stop at $0.18 vs $0.14 entry).  Validate the trade's CURRENT
+    # geometry instead: both levels positive, stop below TP.
     if payload.stop_price is not None:
         stop = round(payload.stop_price, 2)
         if stop <= 0:
             raise HTTPException(status_code=422, detail="stop_price must be > 0")
-        if stop > entry:
-            raise HTTPException(
-                status_code=422,
-                detail=f"stop_price ${stop:.2f} must be at or below entry ${entry:.2f}",
-            )
     else:
         stop = None
 
     if payload.tp2_price is not None:
         tp = round(payload.tp2_price, 2)
-        if tp <= entry:
-            raise HTTPException(
-                status_code=422,
-                detail=f"tp2_price ${tp:.2f} must be above entry ${entry:.2f}",
-            )
+        if tp <= 0:
+            raise HTTPException(status_code=422, detail="tp2_price must be > 0")
     else:
         tp = None
+
+    # Cross-field sanity: effective stop must stay below effective TP.
+    eff_stop = stop if stop is not None else (trade.stop_price or 0)
+    eff_tp   = tp   if tp   is not None else trade.tp2_price
+    if eff_tp is not None and eff_stop and eff_stop >= eff_tp:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"stop ${eff_stop:.2f} must be below take-profit ${eff_tp:.2f} "
+                "(adjust both together if needed)"
+            ),
+        )
 
     # ── Update Tradier broker stop order (if stop changed) ───────────────
     from app.config import settings as _cfg
@@ -764,7 +859,17 @@ async def update_trade_levels(
                 )
 
     # ── Update broker-side TP limit order (if TP changed) ────────────────
-    if tp is not None and _cfg.broker_tp_enabled:
+    # Tradier rejects/cancels one of two resting sells on the same contracts
+    # (GOOGL #140: stop placed, TP placed, Tradier CANCELED the stop 5 min
+    # later).  When a broker stop is resting, skip the broker TP — the
+    # bot-side TP check enforces the new target on every management tick.
+    if tp is not None and _cfg.broker_tp_enabled and trade.stop_order_id:
+        _enrich_logger.info(
+            "[%s] Trade %d: broker TP skipped — resting stop %s reserves the "
+            "contracts (bot-side TP enforces the new target)",
+            trade.symbol, trade.id, trade.stop_order_id,
+        )
+    elif tp is not None and _cfg.broker_tp_enabled:
         tp_client = get_tradier_client()
         # Cancel the existing TP order first (if any)
         if trade.tp_order_id:
@@ -813,6 +918,7 @@ async def update_trade_levels(
     if tp is not None:
         trade.tp1_price = tp   # keep tp1 in sync (v1: both are the same target)
         trade.tp2_price = tp
+        trade.tp_manual = True   # human-set target — runner mode must respect it
 
     _enrich_logger.info(
         "[%s] Trade %d levels updated — stop=%s  tp=%s",

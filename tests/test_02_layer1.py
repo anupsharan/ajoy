@@ -55,7 +55,8 @@ def test_l1_call_signal_valid():
     vwap = calculate_vwap(bars_15m)
     bars_1m = [make_bar(vwap * 1.001, open_=vwap * 1.0005) for _ in range(30)]
 
-    sig = check_entry_signal(bars_1m, bars_15m)
+    with patch.object(settings, "vwap_min_clearance_pct", 0.0):
+        sig = check_entry_signal(bars_1m, bars_15m)
     assert sig is not None
     assert sig.direction == "CALL"
     assert sig.vwap > 0
@@ -67,10 +68,21 @@ def test_l1_put_signal_valid():
     vwap = calculate_vwap(bars_15m)
     bars_1m = [make_bar(vwap * 0.999, open_=vwap * 0.9995) for _ in range(30)]
 
-    sig = check_entry_signal(bars_1m, bars_15m)
+    with patch.object(settings, "vwap_min_clearance_pct", 0.0):
+        sig = check_entry_signal(bars_1m, bars_15m)
     assert sig is not None
     assert sig.direction == "PUT"
     assert sig.trend == "bearish"
+
+def test_l1_min_clearance_blocks_at_vwap():
+    """Price inside the AT-RISK zone (< min clearance from VWAP) is rejected."""
+    bars_15m = rising_bars(base=100.0, n=30, step=0.5)
+    vwap = calculate_vwap(bars_15m)
+    # ~0.1% above VWAP — correct side, but inside the 0.4% clearance zone
+    bars_1m = [make_bar(vwap * 1.001, open_=vwap * 1.0005) for _ in range(30)]
+
+    with patch.object(settings, "vwap_min_clearance_pct", 0.004):
+        assert check_entry_signal(bars_1m, bars_15m) is None
 
 def test_l1_neutral_trend_blocks():
     """Flat 15m bars → neutral trend → no signal."""
@@ -145,7 +157,8 @@ def _put_bars():
 def test_l1_valid_call_setup_produces_signal():
     """A clean rising-trend + VWAP-pullback setup must produce a CALL signal."""
     bars_1m, bars_15m = _call_bars()
-    result = check_entry_signal(bars_1m, bars_15m)
+    with patch.object(settings, "vwap_min_clearance_pct", 0.0):
+        result = check_entry_signal(bars_1m, bars_15m)
     assert result is not None
     assert result.direction == "CALL"
 
@@ -153,6 +166,7 @@ def test_l1_valid_call_setup_produces_signal():
 def test_l1_valid_put_setup_produces_signal():
     """A clean falling-trend + VWAP-rejection setup must produce a PUT signal."""
     bars_1m, bars_15m = _put_bars()
-    result = check_entry_signal(bars_1m, bars_15m)
+    with patch.object(settings, "vwap_min_clearance_pct", 0.0):
+        result = check_entry_signal(bars_1m, bars_15m)
     assert result is not None
     assert result.direction == "PUT"

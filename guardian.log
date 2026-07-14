@@ -134,3 +134,17 @@ FROM trades
 WHERE trades.status = ?]
 [parameters: ('OPEN',)]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-07-09 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-07-09 18:50:01 [GUARDIAN] INFO  Guardian starting at 2026-07-10 01:50:01 UTC
+2026-07-09 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-07-09 18:50:02 [GUARDIAN] INFO  Found 1 open option position(s):
+2026-07-09 18:50:02 [GUARDIAN] INFO    PLTR260710C00139000  qty=2  cost_basis=$584.00
+2026-07-09 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/orders "HTTP/1.1 200 "
+2026-07-09 18:50:02 [GUARDIAN] INFO  Placing sell-to-close orders...
+2026-07-09 18:50:02 [GUARDIAN] INFO  HTTP Request: POST https://api.tradier.com/v1/accounts/6YB81397/orders "HTTP/1.1 200 "
+2026-07-09 18:50:02 [GUARDIAN] INFO    ✓ Sell-to-close placed  PLTR260710C00139000  qty=2  order=136362331
+2026-07-09 18:50:02 [GUARDIAN] INFO  1 / 1 position(s) closed successfully.
+2026-07-09 18:50:02 [GUARDIAN] INFO  Updating bot DB...
+2026-07-09 18:50:02 [GUARDIAN] INFO    No matching open DB trades found
+2026-07-09 18:50:02 [GUARDIAN] INFO  Guardian finished at 2026-07-10 01:50:02 UTC
+2026-07-09 18:50:02 [GUARDIAN] INFO  ============================================================

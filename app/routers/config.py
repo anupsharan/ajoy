@@ -36,6 +36,13 @@ _READONLY = {
     "scheduler_enabled",
     "scan_interval_seconds",
     "manage_interval_seconds",
+    # S3 secrets / infra — change only via .env + restart
+    "s3_broker",
+    "s3_use_sandbox",
+    "s3_trade_pwd",
+    "s3_opend_host",
+    "s3_opend_port",
+    "s3_trd_env",
 }
 
 

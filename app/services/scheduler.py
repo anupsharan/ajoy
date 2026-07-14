@@ -117,21 +117,32 @@ async def _get_bars(client, ticker: str, interval: str, lookback_days: int) -> l
 # hour (it barely changes intraday); the verdict is cached for 60 s so the
 # S1 (60 s) and S2 (30 s) scan loops don't double the API traffic.
 # ---------------------------------------------------------------------------
-_atr_cache: dict[str, tuple[float, float]] = {}       # symbol -> (monotonic_ts, atr)
+_atr_cache: dict[str, tuple[float, float, float]] = {}  # symbol -> (ts, atr, prev_close)
 _ATR_CACHE_TTL: float = 3600.0
 _chop_cache: tuple[float, bool, float] | None = None  # (monotonic_ts, is_chop, ratio)
 _CHOP_CACHE_TTL: float = 60.0
 
 
-async def _get_daily_atr(client, symbol: str) -> float:
+async def _get_daily_atr(client, symbol: str) -> tuple[float, float]:
+    """
+    Return (daily ATR, previous session's close).
+
+    Both are computed on daily bars strictly BEFORE today: today's partial
+    bar must not skew the ATR baseline, and prev_close is needed so the chop
+    gate can measure today's TRUE range (gap included) instead of the plain
+    intraday high−low.
+    """
     entry = _atr_cache.get(symbol)
     if entry and (_time.monotonic() - entry[0]) < _ATR_CACHE_TTL:
-        return entry[1]
+        return entry[1], entry[2]
     daily_bars = await client.get_daily_bars(symbol, days=40)
-    atr = calculate_atr(daily_bars, settings.chop_atr_period)
+    today = date.today()
+    prior = [b for b in daily_bars if b.time.date() < today]
+    atr = calculate_atr(prior, settings.chop_atr_period)
+    prev_close = prior[-1].close if prior else 0.0
     if atr > 0:
-        _atr_cache[symbol] = (_time.monotonic(), atr)
-    return atr
+        _atr_cache[symbol] = (_time.monotonic(), atr, prev_close)
+    return atr, prev_close
 
 
 async def _chop_gate_blocks(client, qqq_bars_1m: list | None = None) -> bool:
@@ -158,20 +169,20 @@ async def _chop_gate_blocks(client, qqq_bars_1m: list | None = None) -> bool:
         qqq_bars_1m = await _get_bars(
             client, settings.adaptive_band_symbol, interval="1min", lookback_days=1
         )
-    atr = await _get_daily_atr(client, settings.adaptive_band_symbol)
-    is_chop, ratio = check_chop_regime(qqq_bars_1m, atr)
+    atr, prev_close = await _get_daily_atr(client, settings.adaptive_band_symbol)
+    is_chop, ratio = check_chop_regime(qqq_bars_1m, atr, prev_close=prev_close)
     _chop_cache = (_time.monotonic(), is_chop, ratio)
 
     if is_chop:
         logger.info(
-            "[chop-gate] CHOP day — QQQ session range is %.0f%% of ATR(%d) "
+            "[chop-gate] CHOP day — QQQ true range (incl. gap) is %.0f%% of ATR(%d) "
             "(min %.0f%%) — blocking new entries",
             ratio * 100, settings.chop_atr_period,
             settings.chop_min_range_ratio * 100,
         )
     else:
         logger.debug(
-            "[chop-gate] range/ATR ratio %.2f ≥ %.2f — trend day, entries allowed",
+            "[chop-gate] true-range/ATR ratio %.2f ≥ %.2f — trend day, entries allowed",
             ratio, settings.chop_min_range_ratio,
         )
     return is_chop
@@ -473,7 +484,10 @@ async def scan_for_entries() -> None:
 
         # ── G3: Max concurrent open trades ───────────────────────────────────
         open_count_result = await db.execute(
-            select(Trade).where(Trade.status == TradeStatus.OPEN)
+            # S3 (stocks, Moomoo-data engine) manages its own slots —
+            # it must not consume S1/S2 option-trade capacity.
+            select(Trade).where(Trade.status == TradeStatus.OPEN,
+                                Trade.strategy_name != "S3")
         )
         open_trades_all = open_count_result.scalars().all()
         if len(open_trades_all) >= settings.max_open_trades:
@@ -933,7 +947,8 @@ async def _attempt_entry(
     order: object = None
     async with _entry_lock:
         open_recheck = await db.execute(
-            select(sqlfunc.count(Trade.id)).where(Trade.status == TradeStatus.OPEN)
+            select(sqlfunc.count(Trade.id)).where(Trade.status == TradeStatus.OPEN,
+                                                  Trade.strategy_name != "S3")
         )
         if int(open_recheck.scalar() or 0) >= settings.max_open_trades:
             logger.debug(
@@ -1117,8 +1132,20 @@ async def _attempt_entry(
         await _place_broker_stop(db, client, trade)
 
     # ── Broker-side resting TP limit order ───────────────────────────────
+    # Tradier rejects a second resting sell on the same contracts (live
+    # evidence: SOFI #137's broker TP was REJECTED 17s after placement while
+    # the disaster stop was resting).  When a stop is resting, skip the TP —
+    # the bot-side TP check remains fully active.  A true OCO order class
+    # would be required to rest both simultaneously.
     if settings.broker_tp_enabled:
-        await _place_broker_tp(db, client, trade)
+        if trade.stop_order_id:
+            logger.info(
+                "[%s] Broker TP skipped — resting disaster stop %s already "
+                "reserves the contracts (bot-side TP remains active)",
+                ticker, trade.stop_order_id,
+            )
+        else:
+            await _place_broker_tp(db, client, trade)
 
 
 # ---------------------------------------------------------------------------
@@ -1688,22 +1715,40 @@ async def _place_broker_tp(db, client, trade: Trade) -> None:
         )
 
 
+def _broker_stop_price(stop_price: float) -> float:
+    """
+    Broker-side DISASTER stop level: the bot's working stop minus the
+    configured buffer (broker_stop_buffer_pct, default 8%).
+
+    Tradier stops trigger on traded prints and fill at market — at the bot's
+    exact level they would front-run the smarter mid-based bot stop on
+    spread noise.  Buffered below it, the broker stop is unreachable in
+    normal operation and only fills when the bot is dead or the move gapped
+    through a management tick.
+    """
+    return max(0.01, round(stop_price * (1 - settings.broker_stop_buffer_pct), 2))
+
+
 async def _place_broker_stop(db, client, trade: Trade) -> None:
-    """Place a resting sell-to-close stop order at the broker and record its id."""
+    """Place a resting sell-to-close DISASTER stop at the broker (buffered
+    below the bot's working stop) and record its id."""
     try:
+        disaster_price = _broker_stop_price(trade.stop_price)
         stop_order = await client.place_option_order(
             option_symbol=trade.option_symbol,
             side="sell_to_close",
             quantity=trade.remaining_qty or trade.quantity,
             order_type="stop",
-            stop_price=trade.stop_price,
+            stop_price=disaster_price,
         )
         if stop_order.order_id:
             trade.stop_order_id = stop_order.order_id
             await db.commit()
             logger.info(
-                "[%s] Broker stop placed: order %s @ $%.2f",
-                trade.symbol, stop_order.order_id, trade.stop_price,
+                "[%s] Broker disaster stop placed: order %s @ $%.2f "
+                "(bot stop $%.2f − %.0f%% buffer)",
+                trade.symbol, stop_order.order_id, disaster_price,
+                trade.stop_price, settings.broker_stop_buffer_pct * 100,
             )
         else:
             logger.error(
@@ -1737,6 +1782,12 @@ async def manage_open_trades() -> None:
         trades = result.scalars().all()
 
         for trade in trades:
+            # ── S3 trades are STOCKS managed by the S3 engine ────────────
+            # The options logic below (option quotes, premium-% stops,
+            # option sell orders) must never touch them — the S3 engine
+            # owns their stops, targets and flatten.
+            if trade.strategy_name == "S3":
+                continue
             try:
                 # ── Broker-stop reconciliation ──────────────────────────────
                 # If the broker filled our resting stop order (e.g. while the
@@ -1797,6 +1848,7 @@ async def manage_open_trades() -> None:
                 if (
                     settings.runner_mode_enabled
                     and not trade.runner_mode
+                    and not trade.tp_manual      # never waive a HUMAN-set target
                     and trade.tp2_price
                     and bid_price >= trade.tp2_price * (1 - settings.runner_proximity_pct)
                 ):
@@ -1807,7 +1859,14 @@ async def manage_open_trades() -> None:
                         trade.runner_mode = True
                         trade.tp1_price = trade.tp2_price   # keep original target for reference
                         trade.tp2_price = None              # disarm the fixed TP
-                        runner_floor = round(mid_price * (1 - settings.runner_trail_pct), 2)
+                        # Floor never below entry+1%: activation can fire with
+                        # the bid 5% under the TP, and a plain −8% trail from
+                        # there can sit below entry — converting a winner into
+                        # a loser (GOOGL #140 exited −3% via its own runner).
+                        runner_floor = max(
+                            round(mid_price * (1 - settings.runner_trail_pct), 2),
+                            round(trade.entry_price * 1.01, 2),
+                        )
                         if trade.stop_price is None or runner_floor > trade.stop_price:
                             trade.stop_price = runner_floor
                         await db.commit()
@@ -1838,7 +1897,7 @@ async def manage_open_trades() -> None:
                                 await client.modify_order(
                                     trade.stop_order_id,
                                     order_type="stop",
-                                    stop_price=trade.stop_price,
+                                    stop_price=_broker_stop_price(trade.stop_price),
                                 )
                             except Exception as exc:
                                 logger.warning(
@@ -1879,17 +1938,19 @@ async def manage_open_trades() -> None:
                         trade.stop_price = new_stop
                         await db.commit()
 
-                        # Keep the broker-side resting stop in sync.
+                        # Keep the broker-side disaster stop in sync (buffered).
                         if trade.stop_order_id:
                             try:
+                                _disaster = _broker_stop_price(new_stop)
                                 await client.modify_order(
                                     trade.stop_order_id,
                                     order_type="stop",
-                                    stop_price=new_stop,
+                                    stop_price=_disaster,
                                 )
                                 logger.info(
-                                    "[%s] Broker stop %s raised to $%.2f",
-                                    trade.symbol, trade.stop_order_id, new_stop,
+                                    "[%s] Broker disaster stop %s raised to $%.2f "
+                                    "(bot stop $%.2f)",
+                                    trade.symbol, trade.stop_order_id, _disaster, new_stop,
                                 )
                             except Exception as exc:
                                 logger.warning(
@@ -1993,6 +2054,7 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
     if (
         settings.runner_mode_enabled
         and not trade.runner_mode
+        and not trade.tp_manual          # never waive a HUMAN-set target
         and trade.tp2_price
         and bid_price >= trade.tp2_price * (1 - settings.runner_proximity_pct)
     ):
@@ -2003,7 +2065,11 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
             trade.runner_mode = True
             trade.tp1_price = trade.tp2_price   # keep original target for reference
             trade.tp2_price = None              # disarm the fixed TP
-            runner_floor = round(bid_price * (1 - settings.runner_trail_pct), 2)
+            # Floor never below entry+1% (see S1 comment — GOOGL #140).
+            runner_floor = max(
+                round(bid_price * (1 - settings.runner_trail_pct), 2),
+                round(trade.entry_price * 1.01, 2),
+            )
             if trade.stop_price is None or runner_floor > trade.stop_price:
                 trade.stop_price = runner_floor
             await db.commit()
@@ -2126,6 +2192,14 @@ async def _manage_orphan_stops(db, client) -> None:
     if not positions:
         return
 
+    # Build exclusion set from config (e.g. ORPHAN_STOP_EXCLUDED_SYMBOLS=PLTR,HOOD)
+    # Matches against the underlying ticker prefix of the OCC option symbol.
+    excluded_tickers: set[str] = {
+        s.strip().upper()
+        for s in settings.orphan_stop_excluded_symbols.split(",")
+        if s.strip()
+    }
+
     # Collect all open Ajoy option symbols (set for O(1) lookup)
     result = await db.execute(select(Trade).where(Trade.status == TradeStatus.OPEN))
     ajoy_symbols: set[str] = {t.option_symbol for t in result.scalars().all()}
@@ -2133,6 +2207,18 @@ async def _manage_orphan_stops(db, client) -> None:
     for pos in positions:
         if pos.symbol in ajoy_symbols:
             continue  # managed by normal exit logic
+
+        # Skip positions the user has explicitly excluded (manual holds)
+        if excluded_tickers:
+            import re as _re
+            m = _re.match(r'^([A-Z]+)', pos.symbol)
+            underlying = m.group(1) if m else ""
+            if underlying in excluded_tickers:
+                logger.debug(
+                    "[ORPHAN] Skipping %s — %s is in ORPHAN_STOP_EXCLUDED_SYMBOLS",
+                    pos.symbol, underlying,
+                )
+                continue
 
         qty = pos.quantity
         cost_basis_total = pos.cost_basis or 0.0
@@ -2179,6 +2265,72 @@ async def _manage_orphan_stops(db, client) -> None:
             logger.error(
                 "[ORPHAN] Failed to auto-stop %s: %s", pos.symbol, exc, exc_info=True
             )
+
+
+async def _reconcile_external_close(
+    db, client, trade: Trade, fallback_price: float | None = None
+) -> bool:
+    """
+    A sell_to_close was REJECTED — usually because the position no longer
+    exists at the broker (closed manually in the Tradier UI, or the disaster
+    stop filled while the bot was down — SOFI #137 got stuck OPEN this way,
+    with both the Close button and the startup cleanup failing repeatedly).
+
+    Verify the position is really gone and, if confirmed, reconcile the DB
+    record with the actual external fill.
+
+    Safety rule: we only close when the absence is POSITIVELY confirmed —
+    either other positions exist (so an empty match isn't an API hiccup) or
+    an actual filled sell order for this contract is found in the account's
+    order history.  Otherwise the trade stays OPEN and the caller keeps its
+    original error handling.
+    """
+    try:
+        positions = await client.get_positions()
+    except Exception:
+        return False   # can't verify — leave OPEN
+    if any(p.symbol == trade.option_symbol for p in positions):
+        return False   # genuinely still live
+
+    ext_fill = None
+    try:
+        ext_fill = await client.get_last_sell_fill(trade.option_symbol)
+    except Exception:
+        pass
+
+    if not positions and ext_fill is None:
+        # Empty account AND no trace of a closing fill — cannot positively
+        # confirm the external close; don't risk marking a live position flat.
+        return False
+
+    # Cancel any remaining resting orders — zombies otherwise.
+    for _attr in ("stop_order_id", "tp_order_id"):
+        _oid = getattr(trade, _attr)
+        if _oid:
+            try:
+                await client.cancel_order(_oid)
+            except Exception:
+                pass
+            setattr(trade, _attr, None)
+
+    qty = trade.remaining_qty or trade.quantity
+    rounded = round(ext_fill or fallback_price or trade.entry_price, 2)
+    trade.status        = TradeStatus.CLOSED
+    trade.exit_price    = rounded
+    trade.exit_time     = datetime.now(tz=timezone.utc)
+    trade.exit_reason   = ExitReason.MANUAL   # closed outside Ajoy
+    trade.pnl           = round(
+        (trade.pnl or 0) + (rounded - trade.entry_price) * qty * 100, 2
+    )
+    trade.remaining_qty = 0
+    await db.commit()
+    logger.info(
+        "[%s] Trade %d was already closed at the broker — reconciled as "
+        "MANUAL @ $%.2f (%s fill)",
+        trade.symbol, trade.id, rounded,
+        "actual" if ext_fill else "estimated",
+    )
+    return True
 
 
 async def _finalize_broker_stop_close(db, client, trade: Trade) -> bool:
@@ -2609,6 +2761,11 @@ async def _close_trade(
         status_str = "unknown"
 
     if status_str in ("rejected", "canceled", "cancelled"):
+        # A rejected sell usually means the position no longer exists at the
+        # broker (manual close / disaster-stop fill).  Verify and reconcile
+        # instead of leaving the trade stuck OPEN (SOFI #137).
+        if await _reconcile_external_close(db, client, trade, fallback_price=exit_price):
+            return True
         logger.error(
             "[%s] Trade %d: sell order %s was %s — NOT closing in DB. "
             "Position is still live in Tradier. Manual intervention may be required.",
@@ -2726,6 +2883,10 @@ async def close_orphaned_open_trades() -> None:
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Trade).where(Trade.status == TradeStatus.OPEN))
         open_trades = result.scalars().all()
+
+    # S3 stock trades are never closed via the option sell path — the S3
+    # engine flattens its own positions (and reconciles on its own startup).
+    open_trades = [t for t in open_trades if t.strategy_name != "S3"]
 
     if not open_trades:
         return

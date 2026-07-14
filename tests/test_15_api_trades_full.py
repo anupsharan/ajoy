@@ -537,3 +537,75 @@ async def test_adopt_zero_cost_returns_422(client):
         },
     )
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/trades/{id}/levels — geometry validation (SOFI #137 regression)
+# ---------------------------------------------------------------------------
+
+def _mock_broker_client():
+    c = MagicMock()
+    c.modify_order = AsyncMock(return_value={"status": "ok"})
+    c.cancel_order = AsyncMock(return_value={"status": "ok"})
+    c.place_option_order = AsyncMock(return_value=OrderResult(order_id="tp9", status="ok"))
+    return c
+
+
+@pytest.mark.asyncio
+async def test_levels_editable_on_profit_locked_trade(client):
+    """
+    SOFI #137 regression: a runner/breakeven trade holds its stop ABOVE
+    entry.  The old entry-anchored validation returned 422 for any edit,
+    making every winning trade uneditable.  Stop $0.18 > entry $0.14 with
+    TP $0.30 must now succeed.
+    """
+    t = await _insert_open_trade(entry_price=0.14, qty=35)
+    async with _session() as db:
+        row = await db.get(Trade, t.id)
+        row.stop_price = 0.18          # profit-locked stop above entry
+        await db.commit()
+
+    with patch("app.routers.trades.get_tradier_client", return_value=_mock_broker_client()):
+        r = await client.patch(
+            f"/api/trades/{t.id}/levels",
+            json={"stop_price": 0.18, "tp2_price": 0.30},
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["stop_price"] == pytest.approx(0.18)
+    assert body["tp2_price"] == pytest.approx(0.30)
+    assert body["tp_manual"] is True   # human-set TP — runner must respect it
+
+
+@pytest.mark.asyncio
+async def test_levels_rejects_stop_at_or_above_tp(client):
+    t = await _insert_open_trade(entry_price=2.00)
+    with patch("app.routers.trades.get_tradier_client", return_value=_mock_broker_client()):
+        r = await client.patch(
+            f"/api/trades/{t.id}/levels",
+            json={"stop_price": 3.00, "tp2_price": 2.50},
+        )
+    assert r.status_code == 422
+    assert "below take-profit" in r.text
+
+
+@pytest.mark.asyncio
+async def test_mark_closed_cancels_resting_broker_orders(client):
+    """Manual broker-side close must not leave zombie stop/TP orders resting."""
+    t = await _insert_open_trade(entry_price=1.00)
+    async with _session() as db:
+        row = await db.get(Trade, t.id)
+        row.stop_order_id = "stop123"
+        row.tp_order_id   = "tp456"
+        await db.commit()
+
+    mock_client = _mock_broker_client()
+    mock_client.get_last_sell_fill = AsyncMock(return_value=1.20)
+    with patch("app.routers.trades.get_tradier_client", return_value=mock_client):
+        r = await client.post(f"/api/trades/{t.id}/mark-closed", json={})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"].lower() == "closed"
+    assert body["exit_price"] == pytest.approx(1.20)   # actual fill, not a quote
+    cancelled = {c.args[0] for c in mock_client.cancel_order.call_args_list}
+    assert {"stop123", "tp456"} <= cancelled

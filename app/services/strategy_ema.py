@@ -87,9 +87,16 @@ def _last_two_emas(prices: list[float], period: int) -> tuple[float | None, floa
 
 
 def _today_bars(bars: list[Bar]) -> list[Bar]:
-    """Filter to today's session bars only (for VWAP reset each day)."""
-    today = datetime.now().date()
-    return [b for b in bars if b.time.date() == today]
+    """
+    Filter to the most recent session's bars only (for VWAP reset each day).
+    Uses the LAST BAR's date rather than the server clock — bar times are ET
+    while the server may run in another timezone, and the two dates diverge
+    around midnight boundaries.
+    """
+    if not bars:
+        return bars
+    last_day = bars[-1].time.date()
+    return [b for b in bars if b.time.date() == last_day]
 
 
 # ---------------------------------------------------------------------------
@@ -238,8 +245,13 @@ def check_ema_cross_freshness(
     CALL : looks for the most recent bar where EMA9 crossed ABOVE EMA21.
     PUT  : looks for the most recent bar where EMA9 crossed BELOW EMA21.
 
-    Returns False (block) if no cross is found in available history — the
-    trend was established before the lookback window, which is too old.
+    SESSION-AWARE (Jul 2026): only crosses within TODAY's session bars count.
+    A cross from a prior day is stale by definition, no matter the bar count —
+    and a fixed count alone can't express that (a large max admits yesterday's
+    trends early in the window; a small max blocks the opening drive late in
+    the window).
+
+    Returns False (block) if no cross is found within today's session.
     Returns True (allow) when there is insufficient data to evaluate.
     """
     max_bars = settings.s2_cross_max_bars_old
@@ -260,8 +272,20 @@ def check_ema_cross_freshness(
     n = len(bars)
     cross_bars_ago: int | None = None
 
+    # Session boundary: only crosses from TODAY's session count as fresh.
+    # A fixed bar-count alone can't do this job — early in the entry window
+    # a large max admits yesterday-afternoon trends, while late in the window
+    # a small max blocks legitimate opening-drive crosses.  The date check
+    # separates the two questions cleanly.
+    session_date = bars[-1].time.date()
+
     # Walk backwards from the most recent completed bar to find the last cross
     for i in range(n - 1, 0, -1):
+        if bars[i].time.date() != session_date:
+            # Walked past today's open without finding a cross — the trend
+            # predates today's session and is stale by definition.
+            break
+
         f_now  = fast_vals[i]
         f_prev = fast_vals[i - 1]
         s_now  = slow_vals[i]
@@ -281,10 +305,12 @@ def check_ema_cross_freshness(
                 break
 
     if cross_bars_ago is None:
-        # No cross in available history → trend is older than the lookback window
+        # No cross within today's session → trend carried over from a prior
+        # day (or predates available history) — too old either way.
         logger.info(
-            "[S2-freshness][%s] No %s EMA cross found in %d bars — trend too old, blocking",
-            ticker, direction, n,
+            "[S2-freshness][%s] No %s EMA cross found in TODAY's session — "
+            "trend predates today, blocking",
+            ticker, direction,
         )
         return False
 

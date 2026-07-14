@@ -101,6 +101,9 @@
         <label class="flex items-center gap-1 text-xs" style="color:#1C1035; user-select:none;">
           <input type="checkbox" x-model="newSymbolS2" /> S2
         </label>
+        <label class="flex items-center gap-1 text-xs" style="color:#1C1035; user-select:none;">
+          <input type="checkbox" x-model="newSymbolS3" /> S3
+        </label>
         <button type="submit" class="btn-primary">Add</button>
       </form>
     </div>
@@ -114,6 +117,7 @@
             <th>Ticker</th>
             <th style="text-align:center;">S1</th>
             <th style="text-align:center;">S2</th>
+            <th style="text-align:center;">S3</th>
             <th>Status</th>
             <th>Added</th>
             <th></th>
@@ -139,6 +143,15 @@
                     ? 'background:#0891B2; color:#fff; border:none; border-radius:4px; padding:0.15rem 0.55rem; font-size:0.72rem; cursor:pointer; font-weight:600;'
                     : 'background:#E5E7EB; color:#9CA3AF; border:none; border-radius:4px; padding:0.15rem 0.55rem; font-size:0.72rem; cursor:pointer;'">
                   S2
+                </button>
+              </td>
+              <!-- S3 toggle pill (stocks · Moomoo engine) -->
+              <td style="text-align:center;">
+                <button @click="toggleS3(s)"
+                  :style="s.s3_enabled
+                    ? 'background:#D97706; color:#fff; border:none; border-radius:4px; padding:0.15rem 0.55rem; font-size:0.72rem; cursor:pointer; font-weight:600;'
+                    : 'background:#E5E7EB; color:#9CA3AF; border:none; border-radius:4px; padding:0.15rem 0.55rem; font-size:0.72rem; cursor:pointer;'">
+                  S3
                 </button>
               </td>
               <td>
@@ -426,8 +439,9 @@
 
       <!-- ── Orphaned Positions Warning ─────────────────────────────── -->
       <div x-show="orphanedPositions.length > 0" class="mb-4">
-        <!-- Warning banner -->
-        <div style="background:#FEF9EC; border:1.5px solid #F59E0B; border-radius:0.5rem;
+        <!-- Warning banner — only shown when at least one orphan is NOT excluded -->
+        <div x-show="orphanedPositions.some(p => !p.auto_stop_excluded)"
+             style="background:#FEF9EC; border:1.5px solid #F59E0B; border-radius:0.5rem;
                     padding:0.6rem 1rem; margin-bottom:0.6rem; display:flex; align-items:center; gap:0.5rem;">
           <span style="font-size:1.1rem;">⚠</span>
           <span style="color:#92400E; font-weight:600; font-size:0.82rem;">
@@ -436,6 +450,20 @@
           <span style="color:#78350F; font-size:0.78rem; margin-left:0.25rem;">
             — found in Tradier but not tracked by Ajoy. Adopt them so Ajoy manages exits,
             or close them directly. Auto-stop is active: orphans are sold if they drop ≥ stop-loss %.
+          </span>
+        </div>
+        <!-- Info banner for excluded orphans -->
+        <div x-show="orphanedPositions.some(p => p.auto_stop_excluded)"
+             style="background:#F0FDF4; border:1.5px solid #86EFAC; border-radius:0.5rem;
+                    padding:0.6rem 1rem; margin-bottom:0.6rem; display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-size:1.1rem;">🛡</span>
+          <span style="color:#166534; font-weight:600; font-size:0.82rem;">
+            Manually Managed
+          </span>
+          <span style="color:#14532D; font-size:0.78rem; margin-left:0.25rem;">
+            — one or more positions are excluded from auto-stop via
+            <code style="font-size:0.75rem; background:#DCFCE7; padding:0.1rem 0.3rem; border-radius:0.25rem;">ORPHAN_STOP_EXCLUDED_SYMBOLS</code>.
+            Ajoy will not close these automatically.
           </span>
         </div>
         <!-- Orphan table -->
@@ -454,7 +482,16 @@
             <tbody>
               <template x-for="p in orphanedPositions" :key="p.symbol">
                 <tr>
-                  <td><code class="slug" x-text="p.symbol"></code></td>
+                  <td>
+                    <code class="slug" x-text="p.symbol"></code>
+                    <span x-show="p.auto_stop_excluded"
+                          title="Excluded from auto-stop — you are managing this manually"
+                          style="margin-left:0.4rem; font-size:0.68rem; font-weight:600;
+                                 color:#166534; background:#DCFCE7; border:1px solid #86EFAC;
+                                 border-radius:0.25rem; padding:0.1rem 0.35rem; vertical-align:middle;">
+                      MANUAL HOLD
+                    </span>
+                  </td>
                   <td class="text-right" x-text="p.qty"></td>
                   <td class="text-right text-muted" x-text="fmtPrice(p.cost_per_unit)"></td>
                   <td class="text-right font-bold"
@@ -464,15 +501,21 @@
                       :style="(p.live_pnl||0) >= 0 ? 'color:#15803D' : 'color:#BE123C'"
                       x-text="p.live_pnl != null ? fmtDollar(p.live_pnl) : '–'"></td>
                   <td style="text-align:right; white-space:nowrap; display:flex; gap:0.4rem; justify-content:flex-end; align-items:center; padding:0.5rem 0.85rem;">
-                    <button @click="adoptOrphan(p.symbol, p.qty, p.cost_per_unit)"
-                            class="action-btn-outline"
-                            style="background:#EDE9FE; color:#5B21B6;"
-                            title="Adopt into Ajoy — full stop/TP management">
-                      Adopt
-                    </button>
-                    <button @click="closeOrphan(p.symbol, p.qty)" class="action-btn-danger">
-                      Close
-                    </button>
+                    <span x-show="!p.auto_stop_excluded" style="display:flex; gap:0.4rem;">
+                      <button @click="adoptOrphan(p.symbol, p.qty, p.cost_per_unit)"
+                              class="action-btn-outline"
+                              style="background:#EDE9FE; color:#5B21B6;"
+                              title="Adopt into Ajoy — full stop/TP management">
+                        Adopt
+                      </button>
+                      <button @click="closeOrphan(p.symbol, p.qty)" class="action-btn-danger">
+                        Close
+                      </button>
+                    </span>
+                    <span x-show="p.auto_stop_excluded"
+                          style="font-size:0.75rem; color:#6B7280; font-style:italic;">
+                      managed in Tradier
+                    </span>
                   </td>
                 </tr>
               </template>
@@ -914,7 +957,7 @@
       Strategy 1 — VWAP Pullback
     </div>
 
-    <template x-for="group in configGroups.filter(g => !g.id.startsWith('s2_'))" :key="group.id">
+    <template x-for="group in configGroups.filter(g => !g.id.startsWith('s2_') && !g.id.startsWith('s3_'))" :key="group.id">
       <div>
 
         <!-- Shared section divider — shown once, before the first shared (S1 + S2) group -->
@@ -1088,10 +1131,97 @@
       </div>
     </template>
 
+    <!-- S3 section divider -->
+    <div style="display:flex; align-items:center; gap:0.75rem; margin:1.75rem 0 0.75rem;">
+      <div style="flex:1; height:1px; background:linear-gradient(to right,#D97706,transparent);"></div>
+      <div style="font-size:0.7rem; font-weight:700; letter-spacing:0.1em; color:#D97706;
+                  text-transform:uppercase; white-space:nowrap;">
+        Strategy 3 — Ask-Wall Breakout (Stocks · Moomoo)
+      </div>
+      <div style="flex:1; height:1px; background:linear-gradient(to left,#D97706,transparent);"></div>
+    </div>
+
+    <p class="text-xs" style="color:#B45309; margin-bottom:0.75rem; max-width:48rem;">
+      S3 trades <strong>stocks</strong> (not options) on the S1 watchlist, 9:40–11:00 ET.
+      Market data (tick + L2) comes from Moomoo OpenD; <strong>orders execute at Tradier</strong>
+      (same account & <code class="slug">USE_SANDBOX</code> switch as S1/S2 — set
+      <code class="slug">S3_BROKER=moomoo</code> in <code class="slug">.env</code> to route orders
+      through Moomoo instead). Connection settings live only in <code class="slug">.env</code>.
+      Toggling <em>S3 Enabled</em> requires an app restart; all other values hot-reload.
+    </p>
+
+    <template x-for="group in configGroups.filter(g => g.id.startsWith('s3_'))" :key="group.id">
+      <div class="card mb-4" style="overflow:visible; border-left:3px solid #D97706;">
+
+        <!-- S3 Group header — amber accent -->
+        <div class="card-header flex justify-between items-center"
+             style="background:linear-gradient(to right,#FFFBEB,#FEF3C7);">
+          <span x-text="group.label" style="color:#B45309; font-weight:600;"></span>
+          <button
+            @click="saveConfigGroup(group)"
+            :disabled="configSaving[group.id] === 'saving'"
+            style="font-size:0.75rem; min-width:5rem; background:#D97706; color:#fff; border:none;
+                   border-radius:6px; padding:0.3rem 0.8rem; cursor:pointer; font-weight:600;"
+            x-text="configSaving[group.id] === 'saving' ? 'Saving…' :
+                    configSaving[group.id] === 'saved'  ? '✓ Saved'  :
+                    configSaving[group.id] === 'error'  ? '✗ Error'  : 'Save'">
+          </button>
+        </div>
+
+        <!-- Fields grid (same layout as S1/S2) -->
+        <div style="padding:1rem; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:1rem;">
+          <template x-for="field in group.fields" :key="field.key">
+            <div>
+              <label class="label-xs" x-text="field.label"></label>
+              <div class="text-xs text-muted mt-1 mb-1" x-text="field.hint"
+                   style="font-size:0.68rem; color:#B45309; opacity:0.75;"></div>
+
+              <template x-if="field.type === 'bool'">
+                <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; margin-top:0.25rem;">
+                  <div style="position:relative; width:2.5rem; height:1.25rem; flex-shrink:0;"
+                       @click="config[field.key] = !config[field.key]">
+                    <div :style="config[field.key]
+                            ? 'background:#D97706; border-radius:9999px; width:100%; height:100%; transition:background 0.2s;'
+                            : 'background:#FDE68A; border-radius:9999px; width:100%; height:100%; transition:background 0.2s;'">
+                    </div>
+                    <div :style="config[field.key]
+                            ? 'position:absolute; top:2px; left:calc(100% - 1.1rem); width:1rem; height:1rem; background:#fff; border-radius:50%; transition:left 0.2s;'
+                            : 'position:absolute; top:2px; left:2px; width:1rem; height:1rem; background:#fff; border-radius:50%; transition:left 0.2s;'">
+                    </div>
+                  </div>
+                  <span class="text-xs" :style="config[field.key] ? 'color:#D97706; font-weight:600;' : 'color:#9C8EC0;'"
+                        x-text="config[field.key] ? 'Enabled' : 'Disabled'"></span>
+                </label>
+              </template>
+
+              <template x-if="field.type === 'number'">
+                <input type="number" :step="field.step" x-model.number="config[field.key]"
+                       class="w-full mt-1"
+                       style="font-family:monospace; font-size:0.85rem; border-color:#FCD34D;" />
+              </template>
+
+              <template x-if="field.type === 'time'">
+                <input type="time" x-model="config[field.key]"
+                       class="w-full mt-1"
+                       style="font-family:monospace; font-size:0.85rem; border-color:#FCD34D;" />
+              </template>
+
+              <template x-if="field.type === 'text'">
+                <input type="text" x-model="config[field.key]"
+                       class="w-full mt-1"
+                       style="font-size:0.85rem; border-color:#FCD34D;" />
+              </template>
+            </div>
+          </template>
+        </div>
+
+      </div>
+    </template>
+
   </section>
 
 </main>
 
-<script src="/static/js/app.js?v=13"></script>
+<script src="/static/js/app.js?v=20"></script>
 </body>
 </html>

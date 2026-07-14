@@ -621,11 +621,12 @@ async def test_broker_tp_disabled_no_extra_order(db):
 
 
 @pytest.mark.asyncio
-async def test_broker_stop_and_tp_both_placed(db):
+async def test_broker_tp_skipped_when_stop_resting(db):
     """
-    With both broker_stop_enabled and broker_tp_enabled, three orders are
-    placed: buy → stop → TP (stop first, then TP, as per the entry function order).
-    Both order IDs must be recorded on the trade.
+    Jul 9 2026: Tradier rejects a second resting sell on the same contracts
+    (SOFI #137's broker TP was REJECTED while the disaster stop was resting).
+    With both toggles enabled, only buy + stop are placed; the TP is skipped
+    and the bot-side TP check remains the exit path.
     """
     from app.config import settings
     client = _make_client(fill_price=None, chain=[_option(ask=2.50)])
@@ -639,15 +640,12 @@ async def test_broker_stop_and_tp_both_placed(db):
     trade = await _get_trade(db)
     assert trade is not None
     calls = client.place_option_order.call_args_list
-    assert len(calls) == 3, "expected buy + stop + TP limit"
+    assert len(calls) == 2, "expected buy + stop only (TP skipped while stop rests)"
     stop_kwargs = calls[1].kwargs
     assert stop_kwargs.get("order_type") == "stop"
     assert stop_kwargs.get("side") == "sell_to_close"
-    tp_kwargs = calls[2].kwargs
-    assert tp_kwargs.get("order_type") == "limit"
-    assert tp_kwargs.get("side") == "sell_to_close"
     assert trade.stop_order_id is not None
-    assert trade.tp_order_id is not None
+    assert trade.tp_order_id is None
 
 
 @pytest.mark.asyncio

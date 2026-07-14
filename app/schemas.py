@@ -34,6 +34,7 @@ class SymbolBase(BaseModel):
     active: bool = True
     s1_enabled: bool = True
     s2_enabled: bool = True
+    s3_enabled: bool = True
 
 
 class SymbolCreate(SymbolBase):
@@ -44,6 +45,7 @@ class SymbolUpdate(BaseModel):
     active: Optional[bool] = None
     s1_enabled: Optional[bool] = None
     s2_enabled: Optional[bool] = None
+    s3_enabled: Optional[bool] = None
 
 
 class SymbolOut(SymbolBase):
@@ -177,6 +179,7 @@ class TradeOut(BaseModel):
     tp1_hit: bool
     be_stop_set: bool
     runner_mode: bool = False
+    tp_manual: Optional[bool] = False   # None on unflushed rows → treated as False
     remaining_qty: Optional[int]
     exit_price: Optional[float]
     exit_time: Optional[datetime]

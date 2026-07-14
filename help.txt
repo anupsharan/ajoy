@@ -7,9 +7,9 @@ curl -s http://localhost:8000/api/trades/live | python3 -m json.tool
 
 
 # Replace "2" with ID & -d '{"exit_price": 2.58}'
-curl -s -X POST http://localhost:8000/api/trades/62/mark-closed \
+curl -s -X POST http://localhost:8000/api/trades/137/mark-closed \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -d '{"exit_price": 0.19}'
 
 
 ===

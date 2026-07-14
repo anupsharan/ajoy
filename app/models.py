@@ -52,6 +52,11 @@ class ExitReason(str, PyEnum):
     RUNNER = "RUNNER"               # runner-mode trail fired after TP was waived at the target
     CUTOFF = "CUTOFF"
     MANUAL = "MANUAL"
+    R1 = "R1"                       # S3: final exit at the +1R scale-out
+    R2 = "R2"                       # S3: final exit at the +2R scale-out
+    EMA9_EXIT = "EMA9_EXIT"         # S3: runner closed on 1-min close below EMA9
+    STAGNATION = "STAGNATION"       # S3: no new post-entry high within the window
+    RECLAIM_FAIL = "RECLAIM_FAIL"   # S3: price printed back below the former wall
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +72,7 @@ class Symbol(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     s1_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
     s2_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
+    s3_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -174,6 +180,10 @@ class Trade(Base):
     # Runner mode: TP was waived at the target because momentum was strong —
     # the trade is now managed by the runner trail instead of a fixed target.
     runner_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Set when the user edits the TP from the UI — runner mode must never
+    # waive a HUMAN-set target (GOOGL #140: user set $3.84, runner waived it
+    # and trailed out below entry).
+    tp_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     remaining_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Exit

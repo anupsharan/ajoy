@@ -14,6 +14,7 @@ dependencies = [
     "pydantic-settings==2.2.1",
     "aiosqlite==0.20.0",
     "asgi-lifespan>=2.1.0",
+    "moomoo-api>=9.0",   # S3 — Moomoo OpenAPI SDK (`import moomoo`); talks to local OpenD
 ]
 
 [tool.uv]

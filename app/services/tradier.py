@@ -589,6 +589,30 @@ class TradierClient:
         open_states = {"open", "pending", "partially_filled", "submitted", "received"}
         return [o for o in orders if (o.get("status") or "").lower() in open_states]
 
+    async def get_last_sell_fill(self, option_symbol: str) -> Optional[float]:
+        """
+        Return the avg_fill_price of the most recent FILLED sell order for
+        `option_symbol` from the account's order history, or None.
+
+        Used when a position was closed OUTSIDE Ajoy (manual close in the
+        Tradier UI, guardian script, broker action): the true exit price
+        lives in the broker's order history, not in the current quote.
+        Recording a detection-time quote instead misstated P&L (NFLX #134:
+        recorded +$30 from a bounced quote; the actual fill was −$50).
+        """
+        try:
+            data = await self._order_get(f"/accounts/{self._account_id}/orders")
+        except Exception as exc:
+            logger.warning("get_last_sell_fill(%s) failed: %s", option_symbol, exc)
+            return None
+        raw = data.get("orders", {})
+        if not raw or raw == "null":
+            return None
+        orders = raw.get("order", [])
+        if isinstance(orders, dict):
+            orders = [orders]
+        return extract_last_sell_fill(orders, option_symbol)
+
     async def get_order_status(self, order_id: str) -> dict:
         """Return raw order status from the sandbox."""
         data = await self._order_get(f"/accounts/{self._account_id}/orders/{order_id}")
@@ -626,6 +650,37 @@ class TradierClient:
 # ---------------------------------------------------------------------------
 
 _client: Optional[TradierClient] = None
+
+
+def extract_last_sell_fill(orders: list[dict], option_symbol: str) -> Optional[float]:
+    """
+    Pure parser: from a raw Tradier orders list, return the avg_fill_price of
+    the most recent FILLED sell order for `option_symbol` (None if absent).
+
+    Matches both `option_symbol` and `symbol` fields (Tradier populates
+    option_symbol for option orders placed via API and UI).  "Most recent"
+    is decided by transaction_date/create_date string comparison (ISO
+    timestamps), falling back to order id.
+    """
+    best: tuple[str, float] | None = None
+    for o in orders:
+        if (o.get("status") or "").lower() != "filled":
+            continue
+        if "sell" not in (o.get("side") or "").lower():
+            continue
+        sym = o.get("option_symbol") or o.get("symbol") or ""
+        if sym.upper() != option_symbol.upper():
+            continue
+        try:
+            fp = float(o.get("avg_fill_price") or 0)
+        except (TypeError, ValueError):
+            continue
+        if fp <= 0:
+            continue
+        key = str(o.get("transaction_date") or o.get("create_date") or o.get("id") or "")
+        if best is None or key > best[0]:
+            best = (key, fp)
+    return round(best[1], 2) if best else None
 
 
 def get_tradier_client() -> TradierClient:

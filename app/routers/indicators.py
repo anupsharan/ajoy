@@ -47,7 +47,7 @@ async def evaluate_for_symbol(
     from app.config import settings as _cfg
     from app.models import Trade as _Trade, TradeStatus as _TS, ExitReason as _ER
     from app.services.strategy import (
-        is_in_trading_window, calculate_vwap,
+        is_in_trading_window, calculate_vwap, session_bars,
         check_bounce_confirmation, check_momentum_candle,
         check_vwap_slope, get_market_regime, ema_direction,
     )
@@ -85,7 +85,7 @@ async def evaluate_for_symbol(
             pass
 
     current_price = bars_1m[-1].close if bars_1m else None
-    vwap          = calculate_vwap(bars_1m) if bars_1m else 0.0
+    vwap          = calculate_vwap(session_bars(bars_1m)) if bars_1m else 0.0
 
     # ── Helper ────────────────────────────────────────────────────────────
     def _gate(gid, name, ok, reason):
@@ -211,8 +211,9 @@ async def evaluate_for_symbol(
     l4_reason = "Too few bars for slope"
     if bars_1m and len(bars_1m) >= _cfg.vwap_slope_lookback_bars + 5:
         l4_ok = check_vwap_slope(bars_1m, direction)
-        vwap_now  = calculate_vwap(bars_1m)
-        vwap_then = calculate_vwap(bars_1m[:-_cfg.vwap_slope_lookback_bars])
+        _sess = session_bars(bars_1m)
+        vwap_now  = calculate_vwap(_sess)
+        vwap_then = calculate_vwap(_sess[:-_cfg.vwap_slope_lookback_bars])
         slope_pct = (vwap_now - vwap_then) / vwap_then * 100 if vwap_then else 0
         l4_reason = (
             f"VWAP slope {slope_pct:+.3f}% over {_cfg.vwap_slope_lookback_bars} bars — OK"

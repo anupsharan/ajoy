@@ -1,0 +1,16 @@
+S3 OpenD probe — 2026-07-12 19:17:43
+Target: 127.0.0.1:11111 | broker=tradier | s3_enabled=True
+OK   [1] SDK: moomoo 10.08.6808
+OK   [2] OpenQuoteContext connected
+OK   [3] global state (US market: AFTER_HOURS_END)
+     probe symbol: US.MSFT
+OK   [4] subscribed US.MSFT → ORDER_BOOK + TICKER + K_1M + K_5M
+OK   [5] get_order_book: 10 bid / 10 ask levels
+         best bid 384.3 × 1.0 | best ask 384.42 × 2.0
+OK   [5] snapshot: last=385.1 volume=24644605.0 time=2026-07-12 22:17:21.890
+     [6] listening for pushes for 8 s (expect >0 only during US market hours)…
+OK   [6] pushes: ticker=1 book=8 kline=0
+     NOTE: market is closed today (weekend) — zero pushes is
+     expected. Rights are verified by steps 4–5 above.
+
+RESULT: OpenD reachable, subscriptions accepted — S3 data path OK.

@@ -23,6 +23,7 @@ from app.services.strategy import (
     calculate_ema,
     calculate_vwap,
     ema_direction,
+    session_bars,
 )
 
 logger = logging.getLogger(__name__)
@@ -227,7 +228,7 @@ def eval_price_vs_vwap(bars_1m: list[Bar], direction: str) -> IndicatorResult:
             value=None, reason="No bars"
         )
 
-    vwap = calculate_vwap(bars_1m)
+    vwap = calculate_vwap(session_bars(bars_1m))   # today's session only
     price = bars_1m[-1].close
     if vwap == 0:
         return IndicatorResult(
@@ -254,7 +255,7 @@ def eval_pullback_to_vwap(bars_1m: list[Bar], direction: str) -> IndicatorResult
             value=None, reason="No bars"
         )
 
-    vwap = calculate_vwap(bars_1m)
+    vwap = calculate_vwap(session_bars(bars_1m))   # today's session only
     price = bars_1m[-1].close
     if vwap == 0:
         return IndicatorResult(

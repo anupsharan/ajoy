@@ -27,6 +27,7 @@ async def create_symbol(payload: SymbolCreate, db: AsyncSession = Depends(get_db
         active=payload.active,
         s1_enabled=payload.s1_enabled,
         s2_enabled=payload.s2_enabled,
+        s3_enabled=payload.s3_enabled,
     )
     db.add(symbol)
     await db.commit()
@@ -47,6 +48,8 @@ async def update_symbol(
         sym.s1_enabled = payload.s1_enabled
     if payload.s2_enabled is not None:
         sym.s2_enabled = payload.s2_enabled
+    if payload.s3_enabled is not None:
+        sym.s3_enabled = payload.s3_enabled
     await db.commit()
     await db.refresh(sym)
     return sym

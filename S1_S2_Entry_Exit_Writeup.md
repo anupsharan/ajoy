@@ -30,6 +30,7 @@ All six layers must pass in sequence. Any failure exits early.
 Three conditions are AND-gated:
 
 - *15-min trend*: EMA-21 on 15-min bars must be bullish (price above EMA) or bearish (price below EMA). Neutral = no trade. The trend must also be confirmed by N consecutive 15-min bars all on the correct EMA side (configurable, prevents entries on a freshly-flipped EMA).
+- *EMA slope filter* (`EMA_SLOPE_FILTER_ENABLED=1`, Jul 2026): the EMA-21 itself must be rising for CALLs / falling for PUTs over the last `EMA_SLOPE_LOOKBACK` (2) completed 15-min bars. Price above a flattening or rolling-over EMA21 is a stale trend, not a tradeable one — the pattern behind S1's losing CALLs (−$510 live). Checks the EMA's direction rather than price's position, so genuine VWAP pullbacks pass untouched. (EMA-21 is deliberately kept as the trend anchor instead of EMA-9: on a 15-min chart EMA-9 hugs price, and a normal pullback would dip below it exactly at the entry zone.)
 - *Price side*: For a CALL, current 1-min price must be above VWAP. For a PUT, below VWAP. Hard gate — no band tolerance.
 - *Pullback zone*: Price must be within `VWAP_BAND_PCT` (1.4%) of VWAP. Too far away = not a pullback yet. Too close = no directional conviction.
 

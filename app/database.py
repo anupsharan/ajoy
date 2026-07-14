@@ -75,6 +75,16 @@ async def _migrate(conn) -> None:
         # v8 → v9: runner mode — TP waived at the target when momentum is
         # strong; the trade is managed by the runner trail from that point on.
         "ALTER TABLE trades ADD COLUMN runner_mode BOOLEAN NOT NULL DEFAULT 0",
+
+        # v9 → v10: per-symbol S3 enrollment (stocks / Moomoo engine).
+        # Defaults to 1 like s1/s2 — use the Symbols page to opt out of
+        # symbols whose share price is too high for the S3 capital
+        # allocation (the s3_min_shares guard also skips those entries).
+        "ALTER TABLE symbols ADD COLUMN s3_enabled BOOLEAN NOT NULL DEFAULT 1",
+
+        # v10 → v11: human-set TP flag — runner mode never waives a manual
+        # target (GOOGL #140: user's $3.84 TP was waived and trailed to a loss)
+        "ALTER TABLE trades ADD COLUMN tp_manual BOOLEAN NOT NULL DEFAULT 0",
     ]
     for stmt in migrations:
         try:
