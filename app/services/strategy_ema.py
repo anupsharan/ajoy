@@ -527,6 +527,7 @@ def check_volume_filter(
     bars_1m: list[Bar],
     lookback: int = 20,
     ticker: str = "",
+    min_ratio: float | None = None,
 ) -> bool:
     """
     Return True if the most recently COMPLETED 1-min bar's volume is at or
@@ -551,12 +552,16 @@ def check_volume_filter(
     avg_vol = sum(b.volume for b in recent) / len(recent) if recent else 0
     current_vol = bars[-1].volume       # most recently completed bar
 
-    ok = current_vol >= avg_vol
+    # min_ratio softens the bar: 1.0 = original ≥-average behavior, which at
+    # 1-min resolution rejects ~half of all bars near-randomly (Jul 15: vetoed
+    # 34 of 51 confirmed signals).  0.8 keeps thin-tape protection only.
+    ratio = min_ratio if min_ratio is not None else settings.s2_volume_min_ratio
+    ok = current_vol >= avg_vol * ratio
     if not ok:
         logger.info(
-            "[S2-volume][%s] Volume below average — current=%d < avg=%.0f (%d-bar) — "
-            "skipping (thin order flow)",
-            ticker, current_vol, avg_vol, lookback,
+            "[S2-volume][%s] Volume below threshold — current=%d < %.0f%% of avg=%.0f "
+            "(%d-bar) — skipping (thin order flow)",
+            ticker, current_vol, ratio * 100, avg_vol, lookback,
         )
     return ok
 
@@ -633,6 +638,7 @@ def check_s2_exit_conditions(
     bid_price: Optional[float] = None,
     bars_1m: Optional[list[Bar]] = None,
     ema9_5m: Optional[float] = None,
+    original_stop: Optional[float] = None,
 ) -> Optional[S2ExitCondition]:
     """
     Evaluate S2 exit conditions in priority order:
@@ -699,8 +705,11 @@ def check_s2_exit_conditions(
 
     # ── 1. Hard stop ────────────────────────────────────────────────────────
     if not stop_suppressed and _stop_check_price <= stop_price:
-        original_stop = round(entry_price * (1.0 - settings.s2_stop_loss_pct), 2)
-        reason = "TRAILING_STOP" if stop_price > original_stop else "STOP"
+        # Label against the ENTRY-TIME stop when available (see S1 comment —
+        # the settings-derived fallback mislabels structural stops).
+        _orig = original_stop if original_stop is not None \
+                else round(entry_price * (1.0 - settings.s2_stop_loss_pct), 2)
+        reason = "TRAILING_STOP" if stop_price > _orig else "STOP"
         logger.info(
             "[S2-exit] %s — bid %.2f ≤ stop %.2f (entry %.2f, mid %.2f)",
             reason, _stop_check_price, stop_price, entry_price, current_price,
@@ -743,7 +752,17 @@ def check_s2_exit_conditions(
         and ema9_5m is not None
         and ema9_5m > 0
     ):
-        if check_s2_structure_exit(bars_1m, direction, ema9_5m):
+        # Min-hold: S2 enters BECAUSE price touched the EMA9, so right after
+        # entry price sits AT the exit level — without breathing room, two
+        # red minutes of noise scratches valid trades (NVDA #161, PLTR #155
+        # both exited −9% and then recovered to highs).  Stop / quick-loss
+        # remain active during this window.
+        _struct_armed = True
+        _mh = settings.s2_structure_exit_min_hold_minutes
+        if _mh > 0 and entry_time is not None:
+            _e = entry_time if entry_time.tzinfo else entry_time.replace(tzinfo=timezone.utc)
+            _struct_armed = (_now - _e).total_seconds() / 60 >= _mh
+        if _struct_armed and check_s2_structure_exit(bars_1m, direction, ema9_5m):
             return S2ExitCondition(reason="STRUCT_EXIT", close_all=True)
     else:
         # Legacy signal exit — opposite EMA cross on 5-min bars

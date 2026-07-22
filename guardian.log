@@ -148,3 +148,8 @@ WHERE trades.status = ?]
 2026-07-09 18:50:02 [GUARDIAN] INFO    No matching open DB trades found
 2026-07-09 18:50:02 [GUARDIAN] INFO  Guardian finished at 2026-07-10 01:50:02 UTC
 2026-07-09 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-07-16 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-07-16 18:50:01 [GUARDIAN] INFO  Guardian starting at 2026-07-17 01:50:01 UTC
+2026-07-16 18:50:01 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-07-16 18:50:01 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-07-16 18:50:01 [GUARDIAN] INFO  ============================================================

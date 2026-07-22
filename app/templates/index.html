@@ -973,14 +973,14 @@
         </template>
 
       <div class="card mb-4"
-           :style="['structural','chop','runner'].includes(group.id)
+           :style="['structural','chop','runner','energy'].includes(group.id)
                      ? 'overflow:visible; background:#F0FDF6; border-left:3px solid #059669;'
                      : 'overflow:visible;'">
 
         <!-- Group header -->
         <div class="card-header flex justify-between items-center">
           <span x-text="group.label"
-                :style="['structural','chop','runner'].includes(group.id) ? 'color:#059669;' : ''"></span>
+                :style="['structural','chop','runner','energy'].includes(group.id) ? 'color:#059669;' : ''"></span>
           <button
             @click="saveConfigGroup(group)"
             :disabled="configSaving[group.id] === 'saving'"
@@ -1222,6 +1222,6 @@
 
 </main>
 
-<script src="/static/js/app.js?v=20"></script>
+<script src="/static/js/app.js?v=23"></script>
 </body>
 </html>

@@ -166,6 +166,11 @@ class Trade(Base):
 
     # Levels (option premium prices)
     stop_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The stop as set AT ENTRY — never mutated by trailing/runner raises.
+    # STOP vs TRAILING_STOP labels are decided against THIS, not against a
+    # settings-derived percentage (which mislabeled every structural stop-out
+    # as "trailing" after any config change — NVDA #136, F #146).
+    original_stop_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     tp1_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     tp2_price: Mapped[float | None] = mapped_column(Float, nullable=True)
 

@@ -19,20 +19,29 @@ from app.services.s3.engine import s3_status, start_s3_engine, stop_s3_engine
 from app.services.tradier import close_tradier_client
 
 # ── File logging ─────────────────────────────────────────────────────────
-# Writes to ajoy.log alongside the DB, rotating at 10 MB, keeping 7 days.
+# Writes to ajoy.log alongside the DB, rotating at MIDNIGHT and keeping the
+# last 14 days (one file per day, e.g. ajoy.log.2026-07-16).  Two weeks
+# covers any review window — these logs were the forensic source for every
+# bug found in July.
 # Run `tail -f ajoy.log | grep -E "\[L[1-6]\]|\[G[0-9]\]|CLOSED|OPEN|ERROR"`
-_log_path = Path(__file__).parent.parent / "ajoy.log"
-_file_handler = logging.handlers.RotatingFileHandler(
-    _log_path, maxBytes=10 * 1024 * 1024, backupCount=7, encoding="utf-8"
-)
-_file_handler.setFormatter(logging.Formatter(
-    "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-))
+#
+# Skipped entirely under pytest: the test suite imports this module, and its
+# synthetic trades were polluting the production log with fake "Trade 1
+# CLOSED" lines that broke log forensics twice.
+import sys as _sys
+_running_tests = "pytest" in _sys.modules
 
-# Root logger at INFO — app code logs what it needs, libraries stay quiet.
 logging.getLogger().setLevel(logging.INFO)
-logging.getLogger().addHandler(_file_handler)
+if not _running_tests:
+    _log_path = Path(__file__).parent.parent / "ajoy.log"
+    _file_handler = logging.handlers.TimedRotatingFileHandler(
+        _log_path, when="midnight", backupCount=14, encoding="utf-8"
+    )
+    _file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    logging.getLogger().addHandler(_file_handler)
 logging.getLogger("app.services.strategy_ema").setLevel(logging.DEBUG)
 
 # Silence chatty third-party libraries that flood the log with DEBUG noise.

@@ -85,6 +85,10 @@ async def _migrate(conn) -> None:
         # v10 → v11: human-set TP flag — runner mode never waives a manual
         # target (GOOGL #140: user's $3.84 TP was waived and trailed to a loss)
         "ALTER TABLE trades ADD COLUMN tp_manual BOOLEAN NOT NULL DEFAULT 0",
+
+        # v11 → v12: entry-time stop snapshot — STOP/TRAILING_STOP labels are
+        # decided against this instead of a settings-derived percentage
+        "ALTER TABLE trades ADD COLUMN original_stop_price FLOAT",
     ]
     for stmt in migrations:
         try:

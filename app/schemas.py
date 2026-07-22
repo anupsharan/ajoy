@@ -171,6 +171,7 @@ class TradeOut(BaseModel):
     entry_price: float
     entry_time: datetime
     stop_price: Optional[float]
+    original_stop_price: Optional[float] = None
     tp1_price: Optional[float]
     tp2_price: Optional[float]
     underlying_entry: Optional[float]

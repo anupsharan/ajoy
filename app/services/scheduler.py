@@ -188,6 +188,55 @@ async def _chop_gate_blocks(client, qqq_bars_1m: list | None = None) -> bool:
     return is_chop
 
 
+async def _symbol_energy_blocks(
+    client, ticker: str, bars_1m: list,
+    check_floor: bool = True, check_ceiling: bool = False,
+) -> bool:
+    """
+    Per-symbol range gates — both computed from the same ratio:
+
+      ratio = symbol's session TRUE range (incl. gap) / its own daily ATR(14)
+
+    FLOOR   (check_floor):   ratio < energy_min_range_ratio → not "in play",
+              a range-less symbol has no fuel for continuation (SHOP/SMCI/F).
+    CEILING (check_ceiling): ratio > energy_max_range_ratio → "too hot",
+              post-event names at 3-4× ATR whip option premium ±25% per
+              candle (HOOD, Jul 16-17: −$153 across two days).
+
+    Never blocks on missing data.
+    """
+    try:
+        atr, prev_close = await _get_daily_atr(client, ticker)
+    except Exception:
+        return False
+    if atr <= 0 or not bars_1m:
+        return False
+    is_flat, ratio = check_chop_regime(
+        bars_1m, atr,
+        min_ratio=settings.energy_min_range_ratio,
+        prev_close=prev_close,
+    )
+    if check_floor and is_flat:
+        logger.info(
+            "[energy-gate][%s] Symbol not in play — true range %.0f%% of its "
+            "own ATR(14) (min %.0f%%) — blocking entry",
+            ticker, ratio * 100, settings.energy_min_range_ratio * 100,
+        )
+        return True
+    if (
+        check_ceiling
+        and settings.energy_max_range_ratio > 0
+        and ratio > settings.energy_max_range_ratio
+    ):
+        logger.info(
+            "[vol-ceiling][%s] Symbol too hot — true range %.0f%% of its own "
+            "ATR(14) (max %.0f%%) — post-event whip risk, blocking entry",
+            ticker, ratio * 100, settings.energy_max_range_ratio * 100,
+        )
+        return True
+    return False
+
+
 # ── Entry placement lock (Fix #1: MAX_OPEN_TRADES race) ──────────────────
 # Serialises the final "re-check count → place buy order → commit" step so
 # that concurrent per-symbol scans cannot all slip through the global cap
@@ -432,7 +481,13 @@ async def _get_s2_recent_bad_exit(db, ticker: str) -> Trade | None:
             Trade.symbol == ticker,
             Trade.strategy_name == "ema_cross",
             Trade.status == TradeStatus.CLOSED,
-            Trade.exit_reason.in_([ExitReason.STOP, ExitReason.EMA_CROSS, ExitReason.TRAILING_STOP]),
+            # STRUCT_EXIT + QUICK_LOSS added Jul 14 2026: both are loss exits
+            # and belong in the cooldown — SMCI re-entered 8 min after a
+            # STRUCT_EXIT loss because this list predated those reasons.
+            Trade.exit_reason.in_([
+                ExitReason.STOP, ExitReason.EMA_CROSS, ExitReason.TRAILING_STOP,
+                ExitReason.STRUCT_EXIT, ExitReason.QUICK_LOSS,
+            ]),
             Trade.exit_time >= cooldown_start,
         )
         .order_by(Trade.exit_time.desc())
@@ -646,6 +701,15 @@ async def _attempt_entry(
     bars_1m  = await _get_bars(client, ticker, interval="1min",  lookback_days=1)
     bars_15m = await _get_bars(client, ticker, interval="15min",
                                lookback_days=settings.trend_lookback_days)
+
+    # ── Energy floor + volatility ceiling (S1 toggles) ───────────────────
+    if (settings.energy_gate_s1_enabled or settings.vol_ceiling_s1_enabled) \
+            and await _symbol_energy_blocks(
+        client, ticker, bars_1m,
+        check_floor=settings.energy_gate_s1_enabled,
+        check_ceiling=settings.vol_ceiling_s1_enabled,
+    ):
+        return
     # Drop the in-progress 15-min bar — EMA trend / consecutive-bar confirmation
     # must only see completed bars.  (1-min bars are left as-is: VWAP wants the
     # partial bar, and L2/L3 already exclude bars_1m[-1] explicitly.)
@@ -812,6 +876,22 @@ async def _attempt_entry(
 
     price    = signal.current_price
     selected = min(eligible, key=lambda o: abs(o.strike - price))
+
+    # ── Contract quality floors (Jul 14 2026) ─────────────────────────────
+    # Sub-$1 contracts quantize in 1-cent ticks (a structural stop can be
+    # 2 ticks wide) and their spreads run 10-20% of mid.  S1 previously had
+    # NO spread check at all (SOFI #137 entered a $0.14 contract).
+    _sel_mid = selected.mid if (selected.mid and selected.mid > 0) else selected.ask
+    if settings.option_min_premium > 0 and _sel_mid < settings.option_min_premium:
+        logger.info(
+            "[%s] Contract too cheap — mid $%.2f < min premium $%.2f "
+            "(penny quantization / spread noise) — skipping",
+            ticker, _sel_mid, settings.option_min_premium,
+        )
+        return
+    if not check_option_spread(selected.bid, selected.ask,
+                               settings.s2_max_spread_pct, ticker=ticker):
+        return  # spread too wide — friction eats the edge (logged inside)
 
     # ── L6: IV filter ─────────────────────────────────────────────────────
     atm_iv = client.get_atm_iv(full_chain, direction, price)
@@ -1111,6 +1191,7 @@ async def _attempt_entry(
         entry_time=datetime.now(tz=timezone.utc),
         underlying_entry=signal.current_price,
         vwap_at_entry=signal.vwap,
+        original_stop_price=levels["stop_price"],   # entry-time snapshot for honest exit labels
         **levels,
     )
     db.add(trade)
@@ -1161,6 +1242,15 @@ async def scan_for_entries_s2() -> None:
     S2 uses its own symbol list (strategy="S2" in the symbols table).
     """
     if not settings.s2_enabled:
+        return
+
+    # Market-open guard (Jul 20 post-mortem): this scanner previously checked
+    # only the TIME of day, not the day itself.  On Saturday Jul 18 it scanned
+    # Friday's stale bars inside the 11:00-12:30 clock window, placed entry
+    # limits at Friday's closing prices, and Tradier queued those weekend
+    # orders for Monday's open — the "ghost trades" (−$373).  S1 always had
+    # this guard via is_in_trading_window(); S2 now does too.
+    if not is_market_open():
         return
 
     from zoneinfo import ZoneInfo
@@ -1331,6 +1421,15 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
         logger.warning("[S2][%s] Missing %s bars — skipping", ticker, " + ".join(missing))
         return
 
+    # ── Energy floor + volatility ceiling (S2 toggles) ────────────────────
+    if (settings.energy_gate_s2_enabled or settings.vol_ceiling_s2_enabled) \
+            and await _symbol_energy_blocks(
+        client, ticker, bars_1m,
+        check_floor=settings.energy_gate_s2_enabled,
+        check_ceiling=settings.vol_ceiling_s2_enabled,
+    ):
+        return
+
     # ── Step 1: 5-min Trend Filter ────────────────────────────────────────
     # Determines direction and validates trend (cached between candle closes).
     direction: str | None = None
@@ -1449,8 +1548,18 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
 
     selected = min(eligible, key=lambda o: abs(o.strike - current_price))
 
-    # ── Option spread filter ───────────────────────────────────────────────
-    # Skip illiquid contracts where the bid/ask spread exceeds the threshold.
+    # ── Contract quality floors ────────────────────────────────────────────
+    # Minimum premium: sub-$1 contracts tick in whole cents — F #146's stop
+    # was 2 ticks wide.  Skip them entirely.
+    _s2_mid = selected.mid if (selected.mid and selected.mid > 0) else selected.ask
+    if settings.option_min_premium > 0 and _s2_mid < settings.option_min_premium:
+        logger.info(
+            "[S2][%s] Contract too cheap — mid $%.2f < min premium $%.2f — skipping",
+            ticker, _s2_mid, settings.option_min_premium,
+        )
+        return
+
+    # Spread filter: skip illiquid contracts where bid/ask spread exceeds the threshold.
     _max_spread = settings.s2_max_spread_pct
     if not check_option_spread(selected.bid, selected.ask, _max_spread, ticker=ticker):
         return
@@ -1668,6 +1777,7 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
         entry_time=datetime.now(tz=timezone.utc),
         underlying_entry=current_price,
         stop_price=stop_price,
+        original_stop_price=stop_price,   # entry-time snapshot for honest exit labels
         tp1_price=None,
         tp2_price=tp2_price,
     )
@@ -1865,7 +1975,7 @@ async def manage_open_trades() -> None:
                         # a loser (GOOGL #140 exited −3% via its own runner).
                         runner_floor = max(
                             round(mid_price * (1 - settings.runner_trail_pct), 2),
-                            round(trade.entry_price * 1.01, 2),
+                            round(trade.entry_price * (1 + settings.runner_floor_lock_pct), 2),
                         )
                         if trade.stop_price is None or runner_floor > trade.stop_price:
                             trade.stop_price = runner_floor
@@ -1984,6 +2094,7 @@ async def manage_open_trades() -> None:
                     current_underlying=underlying_q.last,
                     remaining_qty=trade.remaining_qty or trade.quantity,
                     entry_time=trade.entry_time,
+                    original_stop=trade.original_stop_price,
                 )
 
                 if not exit_cond:
@@ -2068,7 +2179,7 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
             # Floor never below entry+1% (see S1 comment — GOOGL #140).
             runner_floor = max(
                 round(bid_price * (1 - settings.runner_trail_pct), 2),
-                round(trade.entry_price * 1.01, 2),
+                round(trade.entry_price * (1 + settings.runner_floor_lock_pct), 2),
             )
             if trade.stop_price is None or runner_floor > trade.stop_price:
                 trade.stop_price = runner_floor
@@ -2135,6 +2246,7 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
         bid_price=bid_price,
         bars_1m=bars_1m_exit or None,
         ema9_5m=ema9_5m_exit,
+        original_stop=trade.original_stop_price,
     )
 
     if exit_cond is None:
@@ -2342,7 +2454,8 @@ async def _finalize_broker_stop_close(db, client, trade: Trade) -> bool:
     exit_price = fill or trade.stop_price or trade.entry_price
     qty = trade.remaining_qty or trade.quantity
 
-    original_stop = round(trade.entry_price * (1 - settings.stop_loss_pct), 2)
+    original_stop = trade.original_stop_price if trade.original_stop_price \
+                    else round(trade.entry_price * (1 - settings.stop_loss_pct), 2)
     reason = (
         ExitReason.TRAILING_STOP
         if (trade.stop_price or 0) > original_stop
@@ -2864,6 +2977,47 @@ async def _close_trade(
 # Startup orphan close
 # ---------------------------------------------------------------------------
 
+async def cancel_stale_entry_orders() -> None:
+    """
+    Startup sweep: cancel every resting BUY order at the broker.
+
+    An entry limit the bot placed but failed to cancel (API error, process
+    killed mid-poll, weekend queueing) is a time bomb — it can fill at a
+    later session's open with stale pricing and no managing trade record
+    (Jul 18 Saturday orders → Jul 20 ghost fills, −$373).  Entry orders are
+    only ever meant to live for limit_order_timeout_seconds, so ANY resting
+    buy at startup is by definition stale.  Sell orders (disaster stops for
+    adopted/open trades) are left untouched.
+    """
+    client = get_tradier_client()
+    try:
+        pending = await client.get_open_orders()
+    except Exception as exc:
+        logger.warning("[startup] Entry-order sweep: could not list orders: %s", exc)
+        return
+    for o in pending:
+        side = (o.get("side") or "").lower()
+        if "buy" not in side:
+            continue
+        oid = str(o.get("id", ""))
+        if not oid:
+            continue
+        try:
+            await client.cancel_order(oid)
+            logger.warning(
+                "[startup] Cancelled STALE resting buy order %s (%s %s x%s) — "
+                "orphaned entry orders must never survive into a session",
+                oid, o.get("option_symbol") or o.get("symbol", "?"),
+                side, o.get("quantity", "?"),
+            )
+        except Exception as exc:
+            logger.error(
+                "[startup] Could not cancel stale buy order %s: %s — "
+                "CHECK TRADIER MANUALLY",
+                oid, exc,
+            )
+
+
 async def close_orphaned_open_trades() -> None:
     """
     On bot startup, close any OPEN trades that survived past the force-close
@@ -2944,11 +3098,16 @@ def start_scheduler() -> None:
         return
 
     # Show the dual-environment config at startup so logs are self-explanatory.
+    # (Old version always printed the sandbox URL string regardless of the
+    # flag — caused a false alarm during the Jul 20 ghost-trade incident.)
     logger.info(
-        "Tradier: market data → %s | orders → %s (account %s)",
+        "Tradier: market data → %s | orders → %s [%s] (account %s)",
         settings.tradier_base_url,
-        settings.tradier_base_url_sandbox,
-        settings.tradier_account_id,
+        settings.tradier_base_url_sandbox if settings.use_sandbox
+        else settings.tradier_base_url,
+        "SANDBOX" if settings.use_sandbox else "LIVE",
+        settings.tradier_account_id_sandbox if settings.use_sandbox
+        else settings.tradier_account_id,
     )
 
     scheduler.add_job(
@@ -2972,6 +3131,16 @@ def start_scheduler() -> None:
         close_orphaned_open_trades, "date",
         run_date=datetime.now(tz=scheduler.timezone),
         id="startup_orphan_close", replace_existing=True,
+    )
+    # One-shot startup sweep: cancel any resting BUY orders at the broker.
+    # Jul 20 post-mortem: Saturday-placed entry limits survived the weekend
+    # and filled at Monday's open as "ghost trades".  Whatever their origin
+    # (failed cancels, kill mid-poll), no orphaned entry order may ever
+    # survive into a session again.
+    scheduler.add_job(
+        cancel_stale_entry_orders, "date",
+        run_date=datetime.now(tz=scheduler.timezone),
+        id="startup_entry_order_sweep", replace_existing=True,
     )
     scheduler.start()
     logger.info(

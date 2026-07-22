@@ -765,6 +765,11 @@ def check_entry_signal(
     direction_prelim = "CALL" if trend == "bullish" else "PUT"
     current_price = bars_1m[-1].close
 
+    # S1 PUT kill switch (mirror of S2's) — review lever, ON by default.
+    if direction_prelim == "PUT" and not settings.s1_puts_enabled:
+        logger.info("%s[L1] PUT entries disabled (s1_puts_enabled=0) — skip", sym)
+        return None
+
     # (b) price_vs_vwap — side check FIRST (hard gate, no band tolerance)
     # Price touching VWAP from the wrong side must never trigger an entry.
     if trend == "bullish" and current_price < vwap:
@@ -1147,6 +1152,7 @@ def check_exit_conditions(
     entry_time: Optional[datetime] = None,
     now: Optional[datetime] = None,
     stop_eval_price: Optional[float] = None,
+    original_stop: Optional[float] = None,
 ) -> Optional[ExitCondition]:
     """
     Evaluate exit conditions in priority order (v1 — single-target, 100% exit):
@@ -1223,8 +1229,13 @@ def check_exit_conditions(
             )
 
     if not _stop_suppressed and stop_price_eval <= stop_price:
-        original_stop = round(entry_price * (1 - settings.stop_loss_pct), 2)
-        reason = "TRAILING_STOP" if stop_price > original_stop else "STOP"
+        # Label against the ENTRY-TIME stop when available.  The old
+        # settings-derived fallback mislabels structural stop-outs as
+        # TRAILING_STOP whenever the structural stop sits above the
+        # percentage level (NVDA #136, F #146).
+        _orig = original_stop if original_stop is not None \
+                else round(entry_price * (1 - settings.stop_loss_pct), 2)
+        reason = "TRAILING_STOP" if stop_price > _orig else "STOP"
         return ExitCondition(reason=reason, close_all=True)
 
     # 3. Profit target — close 100 % of position

@@ -1,0 +1,19 @@
+2026-07-19 01:36:42 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-19 04:37:04 EDT)" was missed by 0:00:38.074111
+2026-07-19 01:36:42 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-19 04:37:04 EDT)" was missed by 0:00:08.167606
+2026-07-19 01:36:42 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-19 04:37:04 EDT)" was missed by 0:00:08.169580
+2026-07-19 04:01:09 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-19 07:02:04 EDT)" was missed by 0:00:04.843845
+2026-07-19 04:01:09 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-19 07:01:34 EDT)" was missed by 0:00:04.856926
+2026-07-19 04:01:09 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-19 07:01:34 EDT)" was missed by 0:00:04.857180
+2026-07-19 05:33:36 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-19 08:34:04 EDT)" was missed by 0:00:01.564771
+2026-07-19 05:33:36 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-19 08:34:04 EDT)" was missed by 0:00:01.642189
+2026-07-19 05:33:36 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-19 08:34:04 EDT)" was missed by 0:00:31.675327
+2026-07-19 05:38:58 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-19 08:39:04 EDT)" was missed by 0:00:53.402249
+2026-07-19 05:38:58 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-19 08:39:04 EDT)" was missed by 0:00:23.520714
+2026-07-19 05:38:58 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-19 08:39:04 EDT)" was missed by 0:00:23.523950
+2026-07-19 21:34:57 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-20 00:35:04 EDT)" was missed by 0:00:22.577397
+2026-07-19 21:34:57 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-20 00:35:04 EDT)" was missed by 0:00:22.578798
+2026-07-19 21:34:57 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-20 00:35:04 EDT)" was missed by 0:00:52.581293
+INFO:     Started server process [40409]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

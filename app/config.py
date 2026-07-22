@@ -101,6 +101,11 @@ class Settings(BaseSettings):
     ema_slope_filter_enabled: bool = True
     ema_slope_lookback: int = 2        # completed 15-min bars (2 = 30 minutes)
 
+    # S1 PUT kill switch — mirror of s2_puts_enabled.  Kept ON by default;
+    # exists so the Jul 28 review can disable the PUT side with one click if
+    # the data condemns it (clean-engine PUTs −$261 vs CALLs positive).
+    s1_puts_enabled: bool = True
+
     vwap_band_pct: float = 0.002       # 0.2 % pullback tolerance to VWAP (normal band)
     # Minimum clearance from VWAP before entry is allowed.
     # Stock must be AT LEAST this far on the correct VWAP side to enter.
@@ -207,6 +212,11 @@ class Settings(BaseSettings):
     runner_mode_enabled: bool = False
     runner_proximity_pct: float = 0.05   # arm check when bid ≥ TP × (1 − this)
     runner_trail_pct: float = 0.08       # trail = mid × (1 − this) while in runner mode
+    # Activation floor: stop never below entry × (1 + this).  1% barely
+    # covered exit slippage (XYZ #168: floor held, fill slipped → −$3
+    # scratch); 3% makes the worst runner outcome green after the spread —
+    # same reasoning as S2's breakeven lock.
+    runner_floor_lock_pct: float = 0.03
 
     # ── Chop-day regime filter (session range vs daily ATR) ───────
     # Both strategies need a trending day; this measures whether today is one.
@@ -219,6 +229,35 @@ class Settings(BaseSettings):
     chop_min_range_ratio: float = 0.5        # QQQ must have covered ≥50% of its normal daily range
     chop_filter_start_time: str = "10:30"    # ET; before this the filter passes
 
+    # ── Per-symbol energy gate ("in play" filter) ─────────────────
+    # A pullback can only CONTINUE if the stock still has fuel.  Blocks
+    # entries when the symbol's own session TRUE range (incl. overnight gap)
+    # is below energy_min_range_ratio of its own daily ATR(14) — the
+    # decaying-flat-base signature behind SHOP/SMCI/F (Jul 14: four losers,
+    # all with bleeding intraday ATR on range-less symbols).
+    # Separate toggles per strategy so each can be validated independently.
+    # NOTE: catches flat/range-less symbols; a big-range stock whose morning
+    # move is exhausted (ORCL-type) needs an ATR-slope veto — phase 2.
+    energy_gate_s1_enabled: bool = False
+    energy_gate_s2_enabled: bool = False
+    energy_min_range_ratio: float = 0.5   # symbol true range must be ≥ this × its ATR(14)
+
+    # Volatility CEILING — the floor's twin.  Post-event names running far
+    # beyond their normal range whip option premium ±25% per candle (HOOD:
+    # −$98 disaster-stop whip Jul 16, −$55 stop Jul 17, both at 3-4× ATR).
+    # Block entries when today's true range EXCEEDS this × the symbol's own
+    # ATR(14).  0 = disabled.
+    vol_ceiling_s1_enabled: bool = False
+    vol_ceiling_s2_enabled: bool = False
+    energy_max_range_ratio: float = 2.5
+
+    # ── Option contract quality floors ────────────────────────────
+    # Minimum premium: sub-$1 contracts quantize in 1-cent ticks, so a
+    # structural stop can be 2 ticks wide (F #146: $0.30 entry, $0.28 stop —
+    # every quote wobble = ±3% of premium) and spreads run 10-20% of mid.
+    # Applies to BOTH strategies at contract selection.  0 = disabled.
+    option_min_premium: float = 1.00
+
     # ── S2 structure exit (replaces 5-min EMA cross signal exit) ──
     # Exit when the last N completed 1-min bars close back through the 5-min
     # EMA9 (the entry thesis level) by at least the margin.  Reacts in 2–3 min
@@ -226,7 +265,13 @@ class Settings(BaseSettings):
     # hard stop in live trading.
     s2_structure_exit_enabled: bool = True
     s2_structure_exit_bars: int = 2          # consecutive 1-min closes required
-    s2_structure_exit_margin_pct: float = 0.0005  # 0.05% beyond EMA9 to count as broken
+    # Margin widened 0.05% → 0.15% and min-hold added (Jul 17): S2 enters
+    # BECAUSE price touched the 5m EMA9, so right after entry price sits AT
+    # the exit level — two red minutes of noise was scratching valid trades
+    # (NVDA #161, PLTR #155: exited −9%, then both recovered to highs).
+    # Every other exit has a min-hold; this one now does too.
+    s2_structure_exit_margin_pct: float = 0.0015  # 0.15% beyond EMA9 to count as broken
+    s2_structure_exit_min_hold_minutes: int = 10  # let the entry breathe first
 
     # ── VWAP exit band (separate from entry band) ─────────────────
     # For VWAP_BREAK exits, use a tighter band than the entry filter.
@@ -377,6 +422,12 @@ class Settings(BaseSettings):
 
     # Entry guards
     s2_volume_confirm: bool = True       # require trigger bar volume > previous bar
+    # Volume filter threshold: confirmation bar volume must be ≥ this fraction
+    # of the 20-bar average.  1.0 (original) rejected ~half of all bars near-
+    # randomly at 1-min resolution — on Jul 15 it vetoed 34 of 51 fully-
+    # confirmed S2 signals.  0.8 keeps the thin-tape protection while letting
+    # ordinary bars through.
+    s2_volume_min_ratio: float = 1.0
     s2_cooldown_minutes: int = 30        # re-entry cooldown after stop/signal exit
     s2_cross_max_bars_old: int = 8       # block entry if EMA9/21 cross is older than N 5-min bars (0 = disabled)
 

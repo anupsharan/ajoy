@@ -337,6 +337,123 @@ class TestSessionVwap:
 
 
 # ---------------------------------------------------------------------------
+# S2 volume filter — configurable threshold
+# ---------------------------------------------------------------------------
+
+class TestVolumeThreshold:
+    def _bars(self, last_vol: int, avg_vol: int = 1000, n: int = 25):
+        bars = [make_bar(100.0, open_=99.98, volume=avg_vol,
+                         ts=datetime(2025, 1, 6, 10, 0) + timedelta(minutes=i))
+                for i in range(n)]
+        bars[-1] = make_bar(100.0, open_=99.98, volume=last_vol,
+                            ts=datetime(2025, 1, 6, 10, 0) + timedelta(minutes=n - 1))
+        return bars
+
+    def test_bar_at_85pct_passes_with_08_ratio(self):
+        from app.services.strategy_ema import check_volume_filter
+        assert check_volume_filter(self._bars(850), min_ratio=0.8)
+
+    def test_bar_at_70pct_blocked_with_08_ratio(self):
+        from app.services.strategy_ema import check_volume_filter
+        assert not check_volume_filter(self._bars(700), min_ratio=0.8)
+
+    def test_default_10_ratio_keeps_original_behavior(self):
+        from app.services.strategy_ema import check_volume_filter
+        from unittest.mock import patch as _patch
+        with _patch.object(settings, "s2_volume_min_ratio", 1.0):
+            assert not check_volume_filter(self._bars(950))
+            assert check_volume_filter(self._bars(1050))
+
+
+# ---------------------------------------------------------------------------
+# Structure exit — min-hold breathing room (NVDA #161 / PLTR #155 regression)
+# ---------------------------------------------------------------------------
+
+class TestStructExitMinHold:
+    def _broken_setup(self):
+        """5-min bars + 1-min bars whose closes sit far below the EMA9."""
+        bars_5m = bars_from_ohlc([(100, 100.1, 99.9, 100.0)] * 30, minutes=5)
+        bars_1m = bars_from_ohlc([(99.0, 99.1, 98.9, 99.0)] * 10)   # « EMA9=100
+        return bars_5m, bars_1m
+
+    def _cond(self, minutes_held):
+        from app.services.strategy_ema import check_s2_exit_conditions
+        from datetime import timezone as _tz
+        bars_5m, bars_1m = self._broken_setup()
+        entry = datetime.now(tz=_tz.utc) - timedelta(minutes=minutes_held)
+        return check_s2_exit_conditions(
+            bars=bars_5m, direction="CALL",
+            entry_price=2.00, current_price=1.95, stop_price=1.60,
+            be_stop_set=False, bid_price=1.94, entry_time=entry,
+            bars_1m=bars_1m, ema9_5m=100.0,
+        )
+
+    def test_no_struct_exit_inside_min_hold(self):
+        with patch.object(settings, "s2_structure_exit_min_hold_minutes", 10), \
+             patch.object(settings, "s2_quick_loss_pct", 0.0):
+            cond = self._cond(minutes_held=5)
+        assert cond is None                      # breathing room — no exit yet
+
+    def test_struct_exit_fires_after_min_hold(self):
+        with patch.object(settings, "s2_structure_exit_min_hold_minutes", 10), \
+             patch.object(settings, "s2_quick_loss_pct", 0.0):
+            cond = self._cond(minutes_held=15)
+        assert cond is not None and cond.reason == "STRUCT_EXIT"
+
+    def test_margin_widened_ignores_shallow_break(self):
+        """Closes only 0.1% below EMA9 with a 0.15% margin → not broken."""
+        from app.services.strategy_ema import check_s2_structure_exit
+        bars = bars_from_ohlc([(99.92, 99.95, 99.88, 99.90)] * 5)   # −0.10%
+        assert not check_s2_structure_exit(
+            bars, "CALL", ema9_5m=100.0, confirm_bars=2, margin_pct=0.0015)
+
+
+# ---------------------------------------------------------------------------
+# Honest exit labels — STOP vs TRAILING_STOP against the ENTRY-TIME stop
+# ---------------------------------------------------------------------------
+
+class TestOriginalStopLabeling:
+    def _bars(self):
+        # enough completed 5-min bars for the exit engine's EMA needs
+        return bars_from_ohlc([(100, 100.1, 99.9, 100.0)] * 30, minutes=5)
+
+    def test_structural_stop_labels_as_stop(self):
+        """F #146 regression: structural stop 0.28 > pct-stop 0.24 used to
+        mislabel as TRAILING_STOP.  With original_stop stored, it's STOP."""
+        from app.services.strategy_ema import check_s2_exit_conditions
+        cond = check_s2_exit_conditions(
+            bars=self._bars(), direction="PUT",
+            entry_price=0.30, current_price=0.27, stop_price=0.28,
+            be_stop_set=False, bid_price=0.27,
+            original_stop=0.28,               # entry-time snapshot
+        )
+        assert cond is not None and cond.reason == "STOP"
+
+    def test_raised_stop_labels_as_trailing(self):
+        from app.services.strategy_ema import check_s2_exit_conditions
+        cond = check_s2_exit_conditions(
+            bars=self._bars(), direction="PUT",
+            entry_price=0.30, current_price=0.31, stop_price=0.32,
+            be_stop_set=True, bid_price=0.31,
+            original_stop=0.28,               # stop was genuinely raised
+        )
+        assert cond is not None and cond.reason == "TRAILING_STOP"
+
+    def test_legacy_rows_fall_back_to_pct(self):
+        """Pre-migration trades (original_stop=None) keep the old behavior."""
+        from app.services.strategy_ema import check_s2_exit_conditions
+        from unittest.mock import patch as _patch
+        with _patch.object(settings, "s2_stop_loss_pct", 0.19):
+            cond = check_s2_exit_conditions(
+                bars=self._bars(), direction="PUT",
+                entry_price=0.30, current_price=0.27, stop_price=0.28,
+                be_stop_set=False, bid_price=0.27,
+                original_stop=None,
+            )
+        assert cond is not None and cond.reason == "TRAILING_STOP"  # old (wrong) label
+
+
+# ---------------------------------------------------------------------------
 # S2 cross freshness — session-aware
 # ---------------------------------------------------------------------------
 
@@ -463,3 +580,25 @@ class TestRunnerActivation:
         bars = self._momentum_bars("CALL")
         assert not should_activate_runner(3.90, None, bars, "CALL")
         assert not should_activate_runner(3.90, 0.0, bars, "CALL")
+
+
+# ---------------------------------------------------------------------------
+# S1 PUT kill switch (review lever)
+# ---------------------------------------------------------------------------
+
+def test_s1_put_kill_switch_blocks_puts():
+    from tests.conftest import falling_bars as _fb
+    from app.services.strategy import calculate_vwap
+    bars_15m = _fb(base=200.0, n=40, step=0.5)
+    vwap = calculate_vwap(bars_15m)
+    bars_1m = [make_bar(vwap * 0.994, open_=vwap * 0.9945) for _ in range(30)]
+    from unittest.mock import patch as _p
+    with _p.object(settings, "s1_puts_enabled", False), \
+         _p.object(settings, "ema_slope_filter_enabled", False), \
+         _p.object(settings, "vwap_min_clearance_pct", 0.0):
+        assert check_entry_signal(bars_1m, bars_15m) is None
+    with _p.object(settings, "s1_puts_enabled", True), \
+         _p.object(settings, "ema_slope_filter_enabled", False), \
+         _p.object(settings, "vwap_min_clearance_pct", 0.0):
+        sig = check_entry_signal(bars_1m, bars_15m)
+    assert sig is not None and sig.direction == "PUT"

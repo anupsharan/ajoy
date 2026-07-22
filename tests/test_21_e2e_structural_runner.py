@@ -271,14 +271,14 @@ async def test_runner_floor_never_below_entry(db_env):
     trade = _mk_trade(tp2=2.20, stop=1.62)                # tight TP near entry
     db.add(trade); await db.commit()
 
-    # bid 2.12 ≥ 2.20×0.95; mid 2.14 → plain floor 1.97 < entry 2.00 → clamp 2.02
+    # bid 2.12 ≥ 2.20×0.95; mid 2.14 → plain floor 1.97 < entry → clamp 2.00×1.03=2.06
     client = _client(opt_bid=2.12, opt_ask=2.16)
     with _manage_env(Session, client, rising_bars(150.0, 10, 0.05)):
         await manage_open_trades()
 
     await db.refresh(trade)
     assert trade.runner_mode is True
-    assert trade.stop_price == pytest.approx(2.02)         # entry × 1.01
+    assert trade.stop_price == pytest.approx(2.06)         # entry × (1 + floor lock 3%)
 
 
 @pytest.mark.asyncio
@@ -468,6 +468,111 @@ async def test_chop_gate_blocks_low_range_day(db_env):
          patch("app.services.scheduler._get_daily_atr", new=AsyncMock(return_value=(5.0, 0.0))):
         blocked = await sched._chop_gate_blocks(client, qqq)
     assert blocked is True
+
+
+# ===========================================================================
+# Energy gate + contract quality floors (Jul 14 batch)
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_energy_gate_blocks_flat_symbol(db_env):
+    """Symbol with tiny true range vs its own ATR is 'not in play' → block."""
+    db, _ = db_env
+    flat_bars = [make_bar(150.0 + 0.02 * (i % 3), open_=150.0)
+                 for i in range(30)]  # ~6-cent range
+    client = _client(bars_1m=flat_bars)
+    with patch("app.services.scheduler._get_daily_atr",
+               new=AsyncMock(return_value=(5.0, 150.0))), \
+         patch.object(settings, "energy_min_range_ratio", 0.5):
+        blocked = await sched._symbol_energy_blocks(
+            client, "FLAT", flat_bars, check_floor=True, check_ceiling=False)
+    assert blocked is True
+
+
+@pytest.mark.asyncio
+async def test_energy_gate_passes_in_play_symbol(db_env):
+    db, _ = db_env
+    moving = rising_bars(150.0, 30, 0.15)   # ~4.4-point range vs ATR 5.0
+    client = _client(bars_1m=moving)
+    with patch("app.services.scheduler._get_daily_atr",
+               new=AsyncMock(return_value=(5.0, 150.0))), \
+         patch.object(settings, "energy_min_range_ratio", 0.5):
+        blocked = await sched._symbol_energy_blocks(
+            client, "MOVER", moving, check_floor=True, check_ceiling=False)
+    assert blocked is False
+
+
+@pytest.mark.asyncio
+async def test_vol_ceiling_blocks_too_hot_symbol(db_env):
+    """HOOD regression: range 3.6× own ATR → too hot → block."""
+    db, _ = db_env
+    wild = rising_bars(100.0, 30, 0.6)      # ~17.4-point range vs ATR 5.0
+    client = _client(bars_1m=wild)
+    with patch("app.services.scheduler._get_daily_atr",
+               new=AsyncMock(return_value=(5.0, 100.0))), \
+         patch.object(settings, "energy_max_range_ratio", 2.5):
+        blocked = await sched._symbol_energy_blocks(
+            client, "HOT", wild, check_floor=False, check_ceiling=True)
+    assert blocked is True
+
+
+@pytest.mark.asyncio
+async def test_vol_ceiling_passes_normal_trend(db_env):
+    """A healthy 0.9× ATR trend day must pass the ceiling."""
+    db, _ = db_env
+    normal = rising_bars(100.0, 30, 0.15)   # ~4.4-point range vs ATR 5.0
+    client = _client(bars_1m=normal)
+    with patch("app.services.scheduler._get_daily_atr",
+               new=AsyncMock(return_value=(5.0, 100.0))), \
+         patch.object(settings, "energy_max_range_ratio", 2.5):
+        blocked = await sched._symbol_energy_blocks(
+            client, "OK", normal, check_floor=False, check_ceiling=True)
+    assert blocked is False
+
+
+@pytest.mark.asyncio
+async def test_min_premium_blocks_cheap_contract(db_env):
+    """F #146 regression: a $0.50 contract must be skipped at selection."""
+    db, _ = db_env
+    client = _client(chain=[_option(ask=0.50)])
+    with _s1_layers(), patch.object(settings, "option_min_premium", 1.00):
+        await _attempt_entry(db, client, "AAPL", "neutral", settings.vwap_band_pct)
+    assert await _one_trade(db) is None
+    client.place_option_order.assert_not_called()
+
+
+# ===========================================================================
+# Ghost-trade regressions (Jul 20): weekend guard + stale entry-order sweep
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_s2_scan_blocked_when_market_closed(db_env):
+    """Sat Jul 18: S2 scanned inside its clock window on a CLOSED day and
+    placed the ghost orders.  The scanner must now check the calendar."""
+    from app.services.scheduler import scan_for_entries_s2
+    client = _client()
+    with patch.object(settings, "s2_enabled", True), \
+         patch("app.services.scheduler.is_market_open", return_value=False), \
+         patch("app.services.scheduler.get_tradier_client", return_value=client):
+        await scan_for_entries_s2()
+    client.get_intraday_bars.assert_not_called()
+    client.place_option_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_startup_sweep_cancels_stale_buys_only(db_env):
+    """Resting BUY orders are cancelled at startup; sell orders left alone."""
+    from app.services.scheduler import cancel_stale_entry_orders
+    client = _client()
+    client.get_open_orders = AsyncMock(return_value=[
+        {"id": 111, "side": "buy_to_open", "option_symbol": "NVDA260720P00202500", "quantity": 2},
+        {"id": 222, "side": "sell_to_close", "option_symbol": "WMT260724P00114000", "quantity": 4},
+        {"id": 333, "side": "buy_to_open", "option_symbol": "AMZN260720P00247500", "quantity": 2},
+    ])
+    with patch("app.services.scheduler.get_tradier_client", return_value=client):
+        await cancel_stale_entry_orders()
+    cancelled = {c.args[0] for c in client.cancel_order.call_args_list}
+    assert cancelled == {"111", "333"}          # buys cancelled, sell untouched
 
 
 # ===========================================================================

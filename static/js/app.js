@@ -101,6 +101,7 @@ function ajoy() {
         fields: [
           { key: 'vwap_band_pct',            label: 'VWAP Band — Normal',      hint: 'Pullback tolerance when QQQ is flat (0.009 = 0.9%)',  type: 'number', step: 0.001 },
           { key: 'vwap_min_clearance_pct', label: 'VWAP Min Clearance',      hint: 'Stock must be at least this far from VWAP on the correct side — blocks AT RISK entries (0.002 = 0.2%). Set 0 to disable.', type: 'number', step: 0.001 },
+          { key: 's1_puts_enabled',         label: 'S1 PUT Entries',          hint: 'Kill switch for S1 PUTs (mirror of S2\'s). Clean-engine PUTs −$261 vs CALLs positive — review lever, ON pending Jul 28 verdict', type: 'bool' },
           { key: 'ema_period',              label: 'EMA Period',              hint: 'Trend direction (default 21)',                                                    type: 'number', step: 1 },
           { key: 'ema_consecutive_bars',  label: 'EMA Confirm Bars',       hint: 'Consecutive bars on correct EMA side',                                           type: 'number', step: 1 },
           { key: 'ema_slope_filter_enabled', label: 'EMA Slope Filter',    hint: 'The 15-min EMA itself must be rising (CALL) / falling (PUT) — blocks stale trends where price sits above a flattening EMA. Pullbacks unaffected', type: 'bool' },
@@ -191,6 +192,20 @@ function ajoy() {
           { key: 'runner_mode_enabled',  label: 'Runner Mode',        hint: 'When price reaches the TP WITH momentum (last 1-min candle still pushing), waive the TP and trail instead — lets breakout winners run past the target. Exits label as RUNNER', type: 'bool' },
           { key: 'runner_proximity_pct', label: 'Activation Zone',     hint: 'Start checking momentum when bid is within this fraction of the TP (0.05 = within 5%)', type: 'number', step: 0.01 },
           { key: 'runner_trail_pct',     label: 'Runner Trail',        hint: 'While in runner mode, stop ratchets this far below the price and never drops (0.08 = 8%)', type: 'number', step: 0.01 },
+          { key: 'runner_floor_lock_pct', label: 'Runner Floor Lock',  hint: 'Activation stop never below entry × (1 + this). 0.03 = +3% — keeps the worst runner exit green after spread/slippage', type: 'number', step: 0.01 },
+        ],
+      },
+      {
+        id: 'energy',
+        label: 'Energy Gate (S1 + S2)',
+        fields: [
+          { key: 'energy_gate_s1_enabled', label: 'Energy Gate — S1',   hint: 'Block S1 entries when the SYMBOL\'s own true range (incl. gap) is below the ratio × its own ATR(14) — flat, fuel-less stocks can\'t continue a pullback', type: 'bool' },
+          { key: 'energy_gate_s2_enabled', label: 'Energy Gate — S2',   hint: 'Same check for S2 entries (Jul 14: all four S2 losers were range-less symbols with bleeding intraday ATR)', type: 'bool' },
+          { key: 'energy_min_range_ratio', label: 'Min Range / ATR',     hint: 'Symbol true range must reach this fraction of its own ATR(14) to be "in play" (0.5 = 50%)', type: 'number', step: 0.05 },
+          { key: 'vol_ceiling_s1_enabled', label: 'Vol Ceiling — S1',    hint: 'Block S1 entries when the symbol is TOO hot — true range beyond the max ratio × its ATR(14). Post-event names whip premium ±25%/candle (HOOD −$153, Jul 16-17)', type: 'bool' },
+          { key: 'vol_ceiling_s2_enabled', label: 'Vol Ceiling — S2',    hint: 'Same too-hot check for S2 entries', type: 'bool' },
+          { key: 'energy_max_range_ratio', label: 'Max Range / ATR',     hint: 'Ceiling: block when true range exceeds this × own ATR(14) (2.5 = 250%). 0 = disabled', type: 'number', step: 0.25 },
+          { key: 'option_min_premium',     label: 'Min Option Premium',  hint: 'Skip contracts cheaper than this (both strategies) — sub-$1 options tick in whole cents and carry 10-20% spreads. 0 = disabled', type: 'number', step: 0.25 },
         ],
       },
       {
@@ -215,6 +230,7 @@ function ajoy() {
           { key: 's2_cooldown_minutes',   label: 'Cooldown (min)',           hint: 'Re-entry wait after stop or EMA cross exit on this symbol',                              type: 'number', step: 1 },
           { key: 's2_max_spread_pct',     label: 'Max Option Spread (%)',    hint: 'Skip contract if (ask−bid)/mid exceeds this. 0.10 = 10% — filters illiquid strikes',     type: 'number', step: 0.01 },
           { key: 's2_max_trades_per_day', label: 'Max Trades / Symbol / Day',hint: 'Cap on S2 entries per symbol per day — multiple pullbacks allowed. 0 = no cap',         type: 'number', step: 1 },
+          { key: 's2_volume_min_ratio',   label: 'Volume Threshold',         hint: 'Confirmation bar volume must be ≥ this × the 20-bar average. 1.0 rejected ~half of all bars near-randomly (Jul 15: 34 of 51 signals); 0.8 keeps only thin-tape protection', type: 'number', step: 0.05 },
           { key: 's2_cross_max_bars_old', label: 'Cross Freshness (bars)',   hint: 'Max age of the EMA9/21 cross in 5-min bars, counted within TODAY only — prior-day crosses always block. 40 passes any same-day cross through a 12:30 window. 0 = disabled', type: 'number', step: 1 },
           { key: 's2_puts_enabled',       label: 'PUT Entries',              hint: 'Kill switch for the S2 PUT side (live Jun–Jul: PUTs 4W/14L, −$554 — all on dips inside uptrends)', type: 'bool' },
           { key: 's2_put_15m_strict',     label: 'Strict PUT 15-min Gate',   hint: 'PUT requires a confirmed BEARISH 15-min trend — neutral or missing data blocks. CALL side unchanged', type: 'bool' },
@@ -243,7 +259,8 @@ function ajoy() {
           { key: 's2_trail_from_current_pct',     label: 'Trail Distance',             hint: 'Stop = current × (1 − this). 0.05 = trail 5% below current price. Avoid <0.05 — a 1% trail stops out on the first tick of noise', type: 'number', step: 0.01 },
           { key: 's2_structure_exit_enabled',     label: 'Structure Exit',             hint: '1-min closes back through the 5-min EMA9 close the trade in 2–3 min. Off = legacy 5-min EMA9/21 cross (10–15 min lag, never beat the stop)', type: 'bool' },
           { key: 's2_structure_exit_bars',        label: 'Structure Exit Bars',        hint: 'Consecutive completed 1-min closes through EMA9 required (2 filters single wicks)', type: 'number', step: 1 },
-          { key: 's2_structure_exit_margin_pct',  label: 'Structure Exit Margin',      hint: 'Close must be this far beyond EMA9 to count as broken (0.0005 = 0.05%)', type: 'number', step: 0.0005 },
+          { key: 's2_structure_exit_margin_pct',  label: 'Structure Exit Margin',      hint: 'Close must be this far beyond EMA9 to count as broken (0.0015 = 0.15%). Entry sits AT the EMA9 — too tight = noise scratches valid trades', type: 'number', step: 0.0005 },
+          { key: 's2_structure_exit_min_hold_minutes', label: 'Structure Exit Min Hold', hint: 'No structure exit for N minutes after entry — lets the trade breathe through entry-zone noise (stop/quick-loss stay active)', type: 'number', step: 1 },
         ],
       },
       {

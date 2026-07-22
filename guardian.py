@@ -17,12 +17,15 @@ bot doesn't try to manage stale open records when it restarts.
 
 SETUP — add to crontab (crontab -e):
 
-  # Close all positions at 2:50 PM ET (18:50 UTC) Mon–Fri
-  50 18 * * 1-5  cd /path/to/ajoy && /path/to/ajoy/.venv/bin/python guardian.py >> guardian.log 2>&1
+  IMPORTANT: cron runs in the machine's LOCAL timezone, not UTC.  The old
+  "50 18" entry (meant as 18:50 UTC = 2:50 PM ET) actually fired at 6:50 PM
+  PACIFIC = 9:50 PM ET — hours after the close.  With the bot's force-close
+  now at 15:50 ET, guardian should run at 15:55 ET as the after-close sweep:
 
-  Tip: verify the UTC offset for your region — EST is UTC-5, EDT is UTC-4.
-    EST (Nov–Mar): 14:50 ET = 19:50 UTC → "50 19 * * 1-5"
-    EDT (Mar–Nov): 14:50 ET = 18:50 UTC → "50 18 * * 1-5"
+  # 15:55 ET = 12:55 PT (PDT) Mon–Fri — for a Pacific-timezone machine:
+  55 12 * * 1-5  cd /path/to/ajoy && /path/to/ajoy/.venv/bin/python guardian.py >> guardian.log 2>&1
+  # (During PST, Nov–Mar, 15:55 ET = 12:55 PST — same entry works year-round
+  #  since both zones shift together.)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
@@ -84,12 +87,15 @@ async def _close_position(client: TradierClient, symbol: str, qty: int) -> bool:
 
 async def _mark_db_trades_closed(
     session_factory,
+    client: TradierClient,
     closed_symbols: set[str],
     exit_time: datetime,
 ) -> None:
     """
     Mark any OPEN bot trades whose option_symbol was just closed as CLOSED.
     Uses ExitReason.CUTOFF since this is an end-of-day forced close.
+    Exit price is taken from the actual Tradier fill when available so P&L
+    stays accurate (previously left None).
     """
     if not closed_symbols:
         return
@@ -103,14 +109,25 @@ async def _mark_db_trades_closed(
         updated = 0
         for trade in open_trades:
             if trade.option_symbol in closed_symbols:
+                fill = None
+                try:
+                    fill = await client.get_last_sell_fill(trade.option_symbol)
+                except Exception:
+                    pass
                 trade.status      = TradeStatus.CLOSED
                 trade.exit_time   = exit_time
                 trade.exit_reason = ExitReason.CUTOFF
-                # P&L left as None — we don't have a fill price from the
-                # guardian.  The Tradier Gain/Loss page will show the truth.
+                if fill:
+                    qty = trade.remaining_qty or trade.quantity
+                    trade.exit_price = fill
+                    trade.pnl = round(
+                        (trade.pnl or 0) + (fill - trade.entry_price) * qty * 100, 2
+                    )
+                # else: P&L left as None — Tradier Gain/Loss page has the truth.
                 updated += 1
-                log.info("  DB trade #%d (%s %s) marked CLOSED",
-                         trade.id, trade.symbol, trade.option_symbol)
+                log.info("  DB trade #%d (%s %s) marked CLOSED%s",
+                         trade.id, trade.symbol, trade.option_symbol,
+                         f" @ ${fill:.2f}" if fill else " (no fill found)")
 
         if updated:
             await db.commit()
@@ -183,12 +200,24 @@ async def run() -> None:
     log.info("%d / %d position(s) closed successfully.",
              len(closed_symbols), len(option_positions))
 
+    # Give the market sells a moment to fill so we can record real exit prices.
+    if closed_symbols:
+        await asyncio.sleep(5)
+
     # ── 3. Update bot DB ─────────────────────────────────────────────────
     log.info("Updating bot DB...")
     engine = create_async_engine(settings.database_url, echo=False)
     Session = async_sessionmaker(engine, expire_on_commit=False)
     try:
-        await _mark_db_trades_closed(Session, closed_symbols, now_utc)
+        # Schema-drift guard: guardian runs standalone, so the DB may lack
+        # columns added since the bot's last restart (failed once with
+        # "no such column: trades.runner_mode").  The app's migrations are
+        # idempotent — run them before touching the trades table.
+        from app.database import Base, _migrate
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await _migrate(conn)
+        await _mark_db_trades_closed(Session, client, closed_symbols, now_utc)
     finally:
         await engine.dispose()
 
