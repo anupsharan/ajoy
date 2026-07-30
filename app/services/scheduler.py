@@ -623,6 +623,11 @@ async def _get_s2_daily_pnl(db, acct: AccountView | None = None) -> float:
 
 async def scan_for_entries() -> None:
     """S1 entry scan — runs once per enabled account enrolled in S1."""
+    # Global master switch first — an account toggle can only narrow it.
+    # OFF stops NEW entries only; manage_open_trades still runs for open S1
+    # positions (same semantics as S2 / PS / a disabled account).
+    if not settings.s1_enabled:
+        return
     if not is_in_trading_window():
         return
     await _for_each_account("scan_for_entries", "s1_enabled", _scan_for_entries_account)

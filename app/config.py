@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     s2_scan_interval_seconds: int = 30  # how often S2 scans (shorter to catch 2-bar pullback window)
     manage_interval_seconds: int = 10   # how often to manage open trades
 
+    # ── S1 master switch ─────────────────────────────────────────
+    # Mirror of s2_enabled / s3_enabled / put_scalp_enabled (Jul 30 2026 —
+    # the UI had toggles for S2/S3 but S1 could only be stopped by disabling
+    # every symbol).  OFF blocks NEW S1 entries only; open S1 positions keep
+    # being managed to their exit.  ANDed with each account's own s1 flag.
+    s1_enabled: bool = True            # master on/off for the VWAP pullback scanner
+
     # ── Trading session window (ET) ──────────────────────────────
     trading_start_time: str = "09:35"  # HH:MM ET — wait 5 min after open
     trading_end_time: str = "14:45"    # HH:MM ET — close ALL open positions at this time

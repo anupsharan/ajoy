@@ -124,6 +124,7 @@ function ajoy() {
         id: 'risk',
         label: 'Risk & Sizing',
         fields: [
+          { key: 's1_enabled', label: 'S1 Enabled', hint: 'Master switch — enable the VWAP Pullback strategy scanner. OFF stops new S1 entries; open S1 positions are still managed to their exit', type: 'bool' },
           { key: 'max_daily_loss',   label: 'Max Daily Loss',      hint: 'Halt day if P&L < -$this',       type: 'number', step: 1 },
           { key: 'risk_per_trade',   label: 'Risk Per Trade ($)',   hint: 'USD lost if stop fires — sizes qty = risk / (entry × stop%). 0 = disable', type: 'number', step: 10 },
           { key: 'amount_per_trade', label: 'Premium Budget Cap',   hint: 'Max USD premium per trade — skips trade if 1 contract exceeds it', type: 'number', step: 10 },

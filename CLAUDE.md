@@ -49,16 +49,6 @@ fat losers) and several measurement bugs. Everything below was built and tested 
   Fallback to percentage levels only when delta missing.
 - **Chop gate** (shared): block ALL entries while QQQ **true range incl. overnight gap**
   < 50% of its ATR(14). Gap-aware since Jul 9 (plain range misread gap-and-go days).
-- **L5 QQQ regime gate is S1-ONLY — this is INTENTIONAL, do not "fix" it.**
-  S1 blocks a CALL when QQQ is below its VWAP; S2 has no such gate.  So the
-  same symbol can be refused by S1 and taken by S2 seconds later (live
-  example Jul 27: S1 blocked ORCL at 07:51:05 on `[L5] Regime gate: QQQ
-  BEARISH`, S2 opened it at 07:51:07).  The asymmetry is deliberate — S1 is a
-  pullback-continuation setup that leans on broad-market drift, so a hostile
-  regime genuinely invalidates it; S2 is a momentum-breakout setup judged on
-  the symbol's own 5-min structure.  Decided in an earlier session and
-  re-confirmed by the user Jul 27.  If you notice this and think it's a bug:
-  it isn't.  Ask before changing it.
 - **Energy floor** (per-strategy toggles; currently S2-only): symbol's own true range
   must be ≥ 50% of its own ATR(14) — flat symbols can't continue pullbacks.
 - **Volatility ceiling** (both ON): block when symbol range > 2.5× own ATR — post-event
@@ -139,60 +129,6 @@ guardian runs migrations first + records fills, logs rotate daily (14 days kept,
   even with bounce guards, the answer is an earlier short window or no shorts,
   not more entry filters.
 
-- **Jul 27 STALE-QUOTE EXITS −$58 (WMT #195, ORCL #197)**: two of four exits
-  fired on quotes the market never traded at. WMT stop $1.06 → triggered on
-  $1.00, filled **$1.14** (+14.0%, actually −7.3% not −14%). ORCL (S2)
-  quick-loss −19% → triggered on $3.65, filled **$4.18** (+14.5%, actually
-  −5.0%). Both during dense `Tradier timeout` storms. Cause: the manage loop
-  fell back to `last` — the most recent TRADE print, minutes stale on a thin
-  option — whenever a side of the quote was missing, then treated it as the
-  market. **Fix: a two-sided quote is now required for any exit decision**
-  (both S1 and S2 branches); a one-sided/missing quote logs a WARNING with
-  bid/ask/last and skips the tick. Delayed exits during a feed outage are
-  exactly what the broker disaster stop covers. Tests `test_25_degraded_quote.py`.
-- **Jul 27 ORCL #197 → #198**: S2 quick-lossed ORCL at 14:58 and **S1 opened
-  the same symbol 8 minutes later** — `_get_recent_bad_exit` listed only
-  STOP/VWAP_BREAK/MANUAL. S2's own cooldown already counted QUICK_LOSS.
-  Fix: QUICK_LOSS + STRUCT_EXIT added to S1's list.
-- **Jul 27 PLTR #194**: the UI levels editor sent the RAW stop to the broker,
-  skipping `_broker_stop_price()`'s 6% buffer that the entry path applies.
-  Editing levels silently promoted the disaster stop into a PRIMARY stop —
-  Tradier triggers on prints and fills at market, so it front-ran the bot's
-  mid-based marketable-limit exit. PLTR's broker stop was moved $3.32 → $3.53
-  by an edit and it then exited `CLOSED via broker-side STOP @ $3.50`.
-  **Fixed**: both the modify-in-place and cancel-and-replace paths now send
-  `_broker_stop_price(stop)`, and the log names it a "disaster stop" with the
-  bot stop + buffer, matching the entry path. Regression test is
-  mutation-checked (reverting the fix fails it).
-- **Jul 27 (harness)**: the multi-account refactor broke
-  `test_22_s3_isolation`'s `lambda: client` (now called with an account). The
-  TypeError was swallowed by the per-account handler, the manage loop never
-  ran, and the tripwire test **passed vacuously**. Fixed to `lambda *a, **k`.
-  Lesson: when a signature changes, check that monkeypatched test doubles
-  still get *called* — a swallowed exception turns a guard test into a no-op.
-
-- **Jul 22-27 TRADIER TIMEOUT STORM (~800 warnings/day)**: near-zero before
-  Jul 22, then 154 / 722 / 834 / 810 per day. Concentrated in the scan hour
-  (568 of today's 810 landed in 10:00-11:00 ET), spread across all symbols —
-  load-correlated, not symbol-specific. Missed entries are fail-safe (skip
-  the cycle, retry next tick) but the same feed distress produced the two
-  stale-quote exits above. **Diagnosis was blocked by the logging**: httpx
-  timeout exceptions stringify to an EMPTY string, so `"failed: %s" % exc`
-  printed nothing, and `except httpx.TimeoutException` discarded the class —
-  a saturated LOCAL pool and a slow Tradier looked identical. Fixed: five log
-  sites in `tradier.py` now go through `_exc_label()` and name the class.
-  **Read the next session's log before tuning anything**:
-    * `PoolTimeout`    → our own cap. `TradierClient._LIMITS.max_connections`
-      is 10, against 3 scanners x `Semaphore(3)` + the manage loop + QQQ.
-      Raise to ~30; it is an arbitrary local limit, not a Tradier one.
-    * `ReadTimeout`    → Tradier genuinely slow. Fewer symbols, or a longer
-      read timeout (was cut 20s -> 8s so a scan cannot overrun its 60s tick).
-  Leading hypothesis is PoolTimeout (the abrupt Jul 22 onset + the
-  concurrency math), but it is UNMEASURED — confirm from the log first.
-- **Jul 27 watch item**: `FISV` times out every cycle and `get_daily_bars`
-  fails on it. Verify the ticker is still valid (Fiserv is believed to have
-  moved FISV -> FI) — a dead symbol burns pool slots on every scan.
-
 ## 5. Current config posture (see `.env` for authority)
 
 Live, half-size, both directions, evaluation mode:
@@ -200,6 +136,10 @@ Live, half-size, both directions, evaluation mode:
 windows 11:00–12:30 ET, chop 0.5 / energy floor 0.5 (S2) / ceiling 2.5 (both),
 min premium $1.00, spread 12%, runner on (floor lock 3%), structure exit 10-min hold,
 strict S2 PUT gate on, S1/S2 PUT switches OFF (Jul 23) but PUT Scalp mode ON (§6b).
+**Jul 30 2026**: added `S1_ENABLED` (Settings → Risk & Sizing, first field) — S1 finally
+has a master toggle like S2/S3/PS. OFF = no NEW S1 entries; open S1 positions are still
+managed to their exit. ANDed with the per-account S1 flag. app.js **v28**,
+`tests/test_26_s1_master_switch.py` (11), suite **643**.
 Broker stop ON (8% buffer), broker TP ON
 but auto-skipped while stop rests. `.env` is heavily commented with the rationale and
 date of every change — **read those comments before touching values.**
