@@ -153,3 +153,40 @@ WHERE trades.status = ?]
 2026-07-16 18:50:01 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
 2026-07-16 18:50:01 [GUARDIAN] INFO  No open option positions found — nothing to close.
 2026-07-16 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-07-21 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-07-21 18:50:02 [GUARDIAN] INFO  Guardian starting at 2026-07-22 01:50:02 UTC
+2026-07-21 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-07-21 18:50:02 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-07-21 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-07-22 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-07-22 18:50:02 [GUARDIAN] INFO  Guardian starting at 2026-07-23 01:50:02 UTC
+2026-07-22 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-07-22 18:50:02 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-07-22 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-07-23 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-07-23 18:50:02 [GUARDIAN] INFO  Guardian starting at 2026-07-24 01:50:02 UTC
+2026-07-23 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-07-23 18:50:02 [GUARDIAN] INFO  No open option positions found — nothing to close.
+2026-07-23 18:50:02 [GUARDIAN] INFO  ============================================================
+2026-07-27 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-07-27 18:50:01 [GUARDIAN] INFO  Guardian starting at 2026-07-28 01:50:01 UTC
+2026-07-27 18:50:01 [GUARDIAN] INFO  Sweeping 1 account(s): Primary
+2026-07-27 18:50:01 [GUARDIAN] INFO  ------------------------------------------------------------
+2026-07-27 18:50:01 [GUARDIAN] INFO  Account: Primary  (LIVE, account 6YB81397)
+2026-07-27 18:50:01 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-07-27 18:50:01 [GUARDIAN] INFO  [Primary] Found 1 open option position(s):
+2026-07-27 18:50:01 [GUARDIAN] INFO    NFLX260731C00071000  qty=3  cost_basis=$405.00
+2026-07-27 18:50:02 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/orders "HTTP/1.1 200 "
+2026-07-27 18:50:02 [GUARDIAN] INFO  HTTP Request: DELETE https://api.tradier.com/v1/accounts/6YB81397/orders/138752212 "HTTP/1.1 200 "
+2026-07-27 18:50:02 [GUARDIAN] INFO    Canceled pending order 138752212 (sell_to_close NFLX260731C00071000)
+2026-07-27 18:50:02 [GUARDIAN] INFO  [Primary] Placing sell-to-close orders...
+2026-07-27 18:50:02 [GUARDIAN] INFO  HTTP Request: POST https://api.tradier.com/v1/accounts/6YB81397/orders "HTTP/1.1 200 "
+2026-07-27 18:50:02 [GUARDIAN] INFO    ✓ Sell-to-close placed  NFLX260731C00071000  qty=3  order=138821027
+2026-07-27 18:50:02 [GUARDIAN] INFO  [Primary] 1 / 1 position(s) closed successfully.
+2026-07-27 18:50:07 [GUARDIAN] INFO  [Primary] Updating bot DB...
+2026-07-27 18:50:07 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/orders "HTTP/1.1 200 "
+2026-07-27 18:50:07 [GUARDIAN] INFO    DB trade #200 (NFLX NFLX260731C00071000) marked CLOSED (no fill found)
+2026-07-27 18:50:07 [GUARDIAN] INFO    1 DB trade(s) marked CLOSED
+2026-07-27 18:50:07 [GUARDIAN] INFO  ============================================================
+2026-07-27 18:50:07 [GUARDIAN] INFO  Guardian finished at 2026-07-28 01:50:07 UTC
+2026-07-27 18:50:07 [GUARDIAN] INFO  ============================================================

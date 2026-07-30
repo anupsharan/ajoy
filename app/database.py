@@ -4,7 +4,17 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
-engine = create_async_engine(settings.database_url, echo=False)
+# `timeout` is SQLite's busy-handler window: how long a writer waits for a
+# competing transaction before raising "database is locked".  The default is
+# 5 s, which was fine when one scanner touched the DB.  With multi-account the
+# process runs several scanners, a manager and the startup jobs concurrently,
+# so brief overlaps are normal and should WAIT rather than fail an entry or —
+# far worse — an exit.  30 s is far longer than any query here takes.
+engine = create_async_engine(
+    settings.database_url,
+    echo=False,
+    connect_args={"timeout": 30} if settings.database_url.startswith("sqlite") else {},
+)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
@@ -89,6 +99,16 @@ async def _migrate(conn) -> None:
         # v11 → v12: entry-time stop snapshot — STOP/TRAILING_STOP labels are
         # decided against this instead of a settings-derived percentage
         "ALTER TABLE trades ADD COLUMN original_stop_price FLOAT",
+
+        # v12 → v13: first trend+thesis conflict timestamp (SIGNAL_FADE exit)
+        "ALTER TABLE trades ADD COLUMN signal_conflict_time DATETIME",
+
+        # v13 → v14: multi-account support (Jul 25 2026).  Every trade now
+        # records WHICH brokerage account holds it, so exits/cancels are
+        # routed to the right Tradier client.  Existing rows stay NULL here
+        # and are backfilled to the primary account by seed_default_account().
+        "ALTER TABLE trades ADD COLUMN account_id INTEGER",
+        "CREATE INDEX IF NOT EXISTS ix_trades_account_id ON trades (account_id)",
     ]
     for stmt in migrations:
         try:

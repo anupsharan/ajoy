@@ -13,6 +13,14 @@ This serves two purposes:
 After closing, it marks the corresponding bot DB trades as CLOSED so the
 bot doesn't try to manage stale open records when it restarts.
 
+MULTI-ACCOUNT (Jul 25 2026): guardian sweeps EVERY account in the accounts
+table — including accounts that are disabled in the UI, because a disabled
+account can still be holding a position that was opened before it was paused.
+Sweeping only the .env account would leave the other accounts' positions open
+overnight, which is precisely the failure this script exists to prevent.
+If the accounts table is missing or empty it falls back to the .env account,
+so an install that predates multi-account behaves exactly as it always did.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 SETUP — add to crontab (crontab -e):
@@ -47,6 +55,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from app.config import settings
 from app.models import Trade, TradeStatus, ExitReason
+from app.services.accounts import legacy_view, scope, view_from_row
 from app.services.tradier import TradierClient
 
 # ── Logging ──────────────────────────────────────────────────────────────
@@ -90,19 +99,24 @@ async def _mark_db_trades_closed(
     client: TradierClient,
     closed_symbols: set[str],
     exit_time: datetime,
+    acct=None,
 ) -> None:
     """
     Mark any OPEN bot trades whose option_symbol was just closed as CLOSED.
     Uses ExitReason.CUTOFF since this is an end-of-day forced close.
     Exit price is taken from the actual Tradier fill when available so P&L
     stays accurate (previously left None).
+
+    Scoped to `acct` so that closing AMZN in one account does not mark an
+    AMZN position in a DIFFERENT account as closed — the two are separate
+    positions that happen to share a contract symbol.
     """
     if not closed_symbols:
         return
 
     async with session_factory() as db:
-        result = await db.execute(
-            select(Trade).where(Trade.status == TradeStatus.OPEN)
+        result = await db.execute(scope(
+            select(Trade).where(Trade.status == TradeStatus.OPEN), acct)
         )
         open_trades = result.scalars().all()
 
@@ -138,19 +152,45 @@ async def _mark_db_trades_closed(
 
 # ── Main ──────────────────────────────────────────────────────────────────
 
-async def run() -> None:
-    now_utc = datetime.now(tz=timezone.utc)
-    log.info("=" * 60)
-    log.info("Guardian starting at %s UTC", now_utc.strftime("%Y-%m-%d %H:%M:%S"))
+async def _load_accounts(session_factory) -> list:
+    """
+    Every account to sweep, including disabled ones.
 
-    client = TradierClient()
+    A disabled account can still hold a position opened before it was paused,
+    and leaving that open overnight is exactly what guardian exists to stop.
+    Falls back to the `.env` account when the table is missing or empty.
+    """
+    from app.models import Account
+    try:
+        async with session_factory() as db:
+            result = await db.execute(
+                select(Account).order_by(Account.sort_order, Account.id)
+            )
+            rows = list(result.scalars().all())
+        if rows:
+            return [view_from_row(r) for r in rows]
+    except Exception as exc:
+        log.warning("Could not read accounts table (%s) — using the .env account", exc)
+    return [legacy_view()]
+
+
+async def _sweep_account(session_factory, acct, now_utc: datetime) -> None:
+    """Close every open option position in ONE account and update the DB."""
+    label = acct.name if acct.id is not None else "Primary (.env)"
+    log.info("-" * 60)
+    log.info("Account: %s  (%s, account %s)",
+             label, "SANDBOX" if acct.use_sandbox else "LIVE",
+             acct.account_number or "?")
+
+    client = TradierClient(acct if acct.id is not None else None)
 
     # ── 1. Fetch open positions ──────────────────────────────────────────
     try:
         positions = await client.get_positions()
     except Exception as exc:
-        log.error("Could not fetch positions from Tradier: %s", exc)
-        log.error("Aborting — no positions were closed.")
+        log.error("[%s] Could not fetch positions from Tradier: %s", label, exc)
+        log.error("[%s] SKIPPING this account — no positions were closed. "
+                  "CHECK TRADIER MANUALLY.", label)
         return
 
     option_positions = [
@@ -159,11 +199,10 @@ async def run() -> None:
     ]
 
     if not option_positions:
-        log.info("No open option positions found — nothing to close.")
-        log.info("=" * 60)
+        log.info("[%s] No open option positions found — nothing to close.", label)
         return
 
-    log.info("Found %d open option position(s):", len(option_positions))
+    log.info("[%s] Found %d open option position(s):", label, len(option_positions))
     for p in option_positions:
         log.info("  %s  qty=%d  cost_basis=$%.2f", p.symbol, p.quantity, p.cost_basis)
 
@@ -185,10 +224,10 @@ async def run() -> None:
             except Exception as exc:
                 log.warning("  Could not cancel pending order %s: %s", oid, exc)
     except Exception as exc:
-        log.warning("Could not list pending orders: %s", exc)
+        log.warning("[%s] Could not list pending orders: %s", label, exc)
 
     # ── 2. Close each position ───────────────────────────────────────────
-    log.info("Placing sell-to-close orders...")
+    log.info("[%s] Placing sell-to-close orders...", label)
     closed_symbols: set[str] = set()
 
     for pos in option_positions:
@@ -197,30 +236,55 @@ async def run() -> None:
         if ok:
             closed_symbols.add(pos.symbol)
 
-    log.info("%d / %d position(s) closed successfully.",
-             len(closed_symbols), len(option_positions))
+    log.info("[%s] %d / %d position(s) closed successfully.",
+             label, len(closed_symbols), len(option_positions))
 
     # Give the market sells a moment to fill so we can record real exit prices.
     if closed_symbols:
         await asyncio.sleep(5)
 
-    # ── 3. Update bot DB ─────────────────────────────────────────────────
-    log.info("Updating bot DB...")
+    # ── 3. Update bot DB (scoped to this account) ────────────────────────
+    log.info("[%s] Updating bot DB...", label)
+    await _mark_db_trades_closed(session_factory, client, closed_symbols,
+                                 now_utc, acct)
+    await client.close()
+
+
+async def run() -> None:
+    now_utc = datetime.now(tz=timezone.utc)
+    log.info("=" * 60)
+    log.info("Guardian starting at %s UTC", now_utc.strftime("%Y-%m-%d %H:%M:%S"))
+
     engine = create_async_engine(settings.database_url, echo=False)
     Session = async_sessionmaker(engine, expire_on_commit=False)
     try:
         # Schema-drift guard: guardian runs standalone, so the DB may lack
         # columns added since the bot's last restart (failed once with
         # "no such column: trades.runner_mode").  The app's migrations are
-        # idempotent — run them before touching the trades table.
+        # idempotent — run them BEFORE anything reads the tables.  This now
+        # also has to happen before the account list is read, since the
+        # accounts table itself may not exist yet on an upgrading install.
         from app.database import Base, _migrate
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await _migrate(conn)
-        await _mark_db_trades_closed(Session, client, closed_symbols, now_utc)
+
+        accounts = await _load_accounts(Session)
+        log.info("Sweeping %d account(s): %s", len(accounts),
+                 ", ".join(a.name for a in accounts))
+
+        for acct in accounts:
+            try:
+                await _sweep_account(Session, acct, now_utc)
+            except Exception as exc:
+                # One bad account must never stop the others from being
+                # flattened — that is the whole point of this script.
+                log.error("Account '%s' sweep FAILED: %s — CHECK TRADIER MANUALLY",
+                          acct.name, exc, exc_info=True)
     finally:
         await engine.dispose()
 
+    log.info("=" * 60)
     log.info("Guardian finished at %s UTC",
              datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
     log.info("=" * 60)

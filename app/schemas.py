@@ -26,6 +26,87 @@ from app.models import Direction, ExitReason, LogicType, TradeStatus
 
 
 # ---------------------------------------------------------------------------
+# Account  (multi-account, Jul 25 2026)
+#
+# The API NEVER returns a raw api_token — reads expose `api_token_masked`
+# ("••••abcd") only.  A write with the token omitted (or sent as the mask)
+# leaves the stored token untouched, so the UI can PATCH an account without
+# ever having to hold the real credential.
+# ---------------------------------------------------------------------------
+
+class AccountBase(BaseModel):
+    name: str
+    account_number: str = ""
+    use_sandbox: bool = True
+    enabled: bool = True
+    notes: str = ""
+    sort_order: int = 0
+
+    # Per-account strategy enrolment
+    s1_enabled: bool = True
+    s2_enabled: bool = True
+    s3_enabled: bool = False
+    put_scalp_enabled: bool = True
+
+    # Per-account sizing / slots — None means "inherit the global .env value"
+    max_open_trades: Optional[int] = None
+    risk_per_trade: Optional[float] = None
+    amount_per_trade: Optional[float] = None
+    max_daily_loss: Optional[float] = None
+    s2_max_open_trades: Optional[int] = None
+    s2_risk_per_trade: Optional[float] = None
+    s2_amount_per_trade: Optional[float] = None
+    s2_max_daily_loss: Optional[float] = None
+    put_scalp_max_open: Optional[int] = None
+    put_scalp_risk_per_trade: Optional[float] = None
+
+
+class AccountCreate(AccountBase):
+    api_token: str = ""
+    data_api_token: str = ""
+
+
+class AccountUpdate(BaseModel):
+    """Every field optional — only what is sent gets changed."""
+    name: Optional[str] = None
+    account_number: Optional[str] = None
+    api_token: Optional[str] = None
+    data_api_token: Optional[str] = None
+    use_sandbox: Optional[bool] = None
+    enabled: Optional[bool] = None
+    notes: Optional[str] = None
+    sort_order: Optional[int] = None
+    s1_enabled: Optional[bool] = None
+    s2_enabled: Optional[bool] = None
+    s3_enabled: Optional[bool] = None
+    put_scalp_enabled: Optional[bool] = None
+    max_open_trades: Optional[int] = None
+    risk_per_trade: Optional[float] = None
+    amount_per_trade: Optional[float] = None
+    max_daily_loss: Optional[float] = None
+    s2_max_open_trades: Optional[int] = None
+    s2_risk_per_trade: Optional[float] = None
+    s2_amount_per_trade: Optional[float] = None
+    s2_max_daily_loss: Optional[float] = None
+    put_scalp_max_open: Optional[int] = None
+    put_scalp_risk_per_trade: Optional[float] = None
+
+
+class AccountOut(AccountBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    broker: str = "tradier"
+    is_primary: bool = False
+    api_token_masked: str = ""
+    has_data_token: bool = False
+    created_at: Optional[datetime] = None
+
+    @field_serializer('created_at', when_used='json')
+    def _ser_dt(self, v: datetime | None) -> str | None:
+        return _as_utc_iso(v)
+
+
+# ---------------------------------------------------------------------------
 # Symbol
 # ---------------------------------------------------------------------------
 
@@ -166,6 +247,8 @@ class TradeOut(BaseModel):
     option_symbol: str
     direction: Direction
     strategy_name: str
+    account_id: Optional[int] = None
+    account_name: Optional[str] = None   # filled in by the trades router
     tradier_order_id: Optional[str]
     quantity: int
     entry_price: float
@@ -181,6 +264,7 @@ class TradeOut(BaseModel):
     be_stop_set: bool
     runner_mode: bool = False
     tp_manual: Optional[bool] = False   # None on unflushed rows → treated as False
+    signal_conflict_time: Optional[datetime] = None
     remaining_qty: Optional[int]
     exit_price: Optional[float]
     exit_time: Optional[datetime]

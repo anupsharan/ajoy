@@ -106,6 +106,37 @@ class Settings(BaseSettings):
     # the data condemns it (clean-engine PUTs −$261 vs CALLs positive).
     s1_puts_enabled: bool = True
 
+    # ── PUT Scalp mode (PS) — Jul 23 2026 ────────────────────────────────
+    # Temporary momentum-short experiment, fully independent of S1/S2 PUT
+    # kill switches.  Entry: Stock Trend (completed-bar 15-min EMA bearish)
+    # AND Thesis (underlying below session VWAP beyond the exit band) in
+    # agreement, plus a red last-completed 1-min bar.  This is the breakdown
+    # entry style the Jul 22-23 PUT post-mortem called for — no pullback
+    # wait, so no adverse selection.  Tight fixed brackets, own risk size,
+    # own spread gate (a 12% spread eats an 8% TP), strategy_name
+    # "put_scalp" so analytics NEVER mix these with the CALL-only verdict.
+    put_scalp_enabled: bool = False
+    put_scalp_tp_pct: float = 0.11            # TP  = entry × 1.11
+    put_scalp_sl_pct: float = 0.06            # SL  = entry × 0.94
+    # 2 min, NOT 6 (Jul 24 AMZN #176): during the hold the only protection is
+    # the broker disaster stop 8% below the bot stop — with a 6% scalp stop
+    # that turns planned −6% risk into realized −13 to −17%.
+    put_scalp_stop_min_hold_minutes: int = 2
+    put_scalp_runner_arm_pct: float = 0.07    # runner arms at +7% gain (momentum bar req.)
+    put_scalp_runner_trail_pct: float = 0.02  # trail 2% below mid once armed
+    # Floor never below entry × 1.05 — the observed "+5-7% then reverse"
+    # pattern must exit as a locked win, not a round-trip (Jul 23 tune).
+    put_scalp_runner_floor_lock_pct: float = 0.05
+    put_scalp_risk_per_trade: float = 75.0    # half size while the mode proves itself
+    put_scalp_max_open: int = 1               # at most 1 concurrent PS trade
+    put_scalp_max_spread_pct: float = 0.08    # tighter than S1/S2's 12%
+    put_scalp_cooldown_minutes: int = 30      # per-symbol pause after ANY PS exit
+    # Bounce guards (Jul 24 — AMZN #176 + INTC #181): PS state signals can be
+    # true but stale.  Require a FRESH breakdown: no green last completed
+    # 5-min bar, and price within this fraction of the session low.
+    put_scalp_no_green_5m_enabled: bool = True
+    put_scalp_max_bounce_from_low_pct: float = 0.005   # 0.5%; 0 = disabled
+
     vwap_band_pct: float = 0.002       # 0.2 % pullback tolerance to VWAP (normal band)
     # Minimum clearance from VWAP before entry is allowed.
     # Stock must be AT LEAST this far on the correct VWAP side to enter.
@@ -355,6 +386,27 @@ class Settings(BaseSettings):
     # half-spread saves.
     exit_limit_orders_enabled: bool = True
     exit_limit_timeout_seconds: int = 12
+
+    # Marketable-limit URGENT exits (Jul 23): raw market sells on fast moves
+    # paid full spread-at-velocity (CRM/COIN: ~$36 extra each).  Urgent exits
+    # now place a limit at bid × (1 − urgent_exit_limit_pct) — fills like a
+    # market order in normal tape but caps the worst fill at 3% below bid.
+    # Unfilled after the (short) timeout → cancel → true market.
+    urgent_exit_limit_enabled: bool = True
+    urgent_exit_limit_pct: float = 0.03
+    urgent_exit_limit_timeout_seconds: int = 6
+
+    # ── Signal-conflict exit (Jul 23, user-requested "last try" rule) ─────
+    # Every manage tick, recompute Stock Trend and Thesis (same logic as the
+    # dashboard columns).  When BOTH conflict with the trade's direction —
+    # S1: completed-bar 15-min trend flipped AND underlying beyond the exit
+    # band on the wrong side of session VWAP;  S2: 5-min EMA9/21 crossed
+    # opposite — exit immediately via the marketable-limit urgent path,
+    # reason SIGNAL_FADE.  First conflict timestamp is stored on the trade
+    # (signal_conflict_time) for later analysis.
+    # Requiring BOTH signals (and bar-close trend, not live-price) is the
+    # noise guard that separates this from the removed VWAP_BREAK band exit.
+    signal_conflict_exit_enabled: bool = True
 
     # ── Limit order entry ─────────────────────────────────────────
     # Enter at the mid-quote (bid+ask)/2 via a limit order instead of

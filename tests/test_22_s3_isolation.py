@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 os.environ.setdefault(
     "DATABASE_URL",
-    "sqlite+aiosqlite:////sessions/tmp/ajoy_s3_isolation_test.db"
+    "sqlite+aiosqlite:////sessions/home/claude/ajoy/tmp_ajoy_s3_isolation_test.db"
     if os.path.isdir("/sessions/tmp") else "sqlite+aiosqlite:///./test_s3_isolation.db",
 )
 
@@ -78,7 +78,7 @@ class TestManageLoopSkipsS3:
         client = _TripwireClient()
         monkeypatch.setattr(sched, "is_market_open", lambda *a, **k: True)
         monkeypatch.setattr(sched, "is_past_cutoff", lambda *a, **k: True)  # worst case
-        monkeypatch.setattr(sched, "get_tradier_client", lambda: client)
+        monkeypatch.setattr(sched, "get_tradier_client", lambda *a, **k: client)
         monkeypatch.setattr(sched, "AsyncSessionLocal", factory)
 
         await sched.manage_open_trades()
@@ -97,7 +97,7 @@ class TestManageLoopSkipsS3:
 
         from app.services import scheduler as sched
         client = _TripwireClient()
-        monkeypatch.setattr(sched, "get_tradier_client", lambda: client)
+        monkeypatch.setattr(sched, "get_tradier_client", lambda *a, **k: client)
         monkeypatch.setattr(sched, "AsyncSessionLocal", factory)
 
         await sched.close_orphaned_open_trades()
@@ -121,7 +121,7 @@ class TestS3PnLDisplay:
                 return _fail
 
         import app.routers.trades as tr
-        monkeypatch.setattr(tr, "get_tradier_client", lambda: _QuoteClient())
+        monkeypatch.setattr(tr, "get_tradier_client", lambda *a, **k: _QuoteClient())
         enriched = await tr._enrich_with_live_pnl(trade)
         # 100 shares × $0.50/share = $50 — NOT $5,000 (options ×100 mult)
         assert enriched.live_pnl == pytest.approx(50.0), enriched.live_pnl

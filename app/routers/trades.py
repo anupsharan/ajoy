@@ -11,6 +11,9 @@ from app.database import get_db
 from app.models import Direction, ExitReason, Trade, TradeStatus
 from app.schemas import CloseTradeRequest, TradeOut, TradeWithLivePnL
 from app.services.tradier import get_tradier_client
+from app.services.accounts import (
+    account_view_for_trade, get_account_view, primary_account_view,
+)
 from app.services.strategy import (
     calculate_ema, completed_bars, compute_trade_levels, ema_direction, session_bars,
 )
@@ -104,7 +107,7 @@ def _s2_ema_thesis(
     return trend, thesis
 
 
-async def _enrich_with_live_pnl(trade: Trade) -> TradeWithLivePnL:
+async def _enrich_with_live_pnl(trade: Trade, client=None) -> TradeWithLivePnL:
     """
     Fetch current option price, underlying quote, and 15-min trend from Tradier.
 
@@ -117,7 +120,10 @@ async def _enrich_with_live_pnl(trade: Trade) -> TradeWithLivePnL:
 
     base = TradeOut.model_validate(trade)
     enriched = TradeWithLivePnL(**base.model_dump())
-    client = get_tradier_client()
+    # Quotes are account-agnostic, but using the owning account's client keeps
+    # market-data auth consistent with whoever holds the position.
+    if client is None:
+        client = get_tradier_client()
 
     # ── Section 1: option quote → current_price, live_pnl, live_pnl_pct ─────
     try:
@@ -290,9 +296,18 @@ async def get_live_trades(db: AsyncSession = Depends(get_db)):
         select(Trade).where(Trade.status == TradeStatus.OPEN).order_by(Trade.entry_time.desc())
     )
     trades = result.scalars().all()
+
+    # Resolve each account once per request rather than per trade.
+    acct_cache: dict[int | None, object] = {}
     enriched = []
     for t in trades:
-        enriched.append(await _enrich_with_live_pnl(t))
+        key = t.account_id
+        if key not in acct_cache:
+            acct_cache[key] = await account_view_for_trade(db, t)
+        acct = acct_cache[key]
+        row = await _enrich_with_live_pnl(t, get_tradier_client(acct))
+        row.account_name = acct.name
+        enriched.append(row)
     return enriched
 
 
@@ -320,7 +335,10 @@ async def manual_close_trade(
                    "switch to flatten, or /mark-closed for bookkeeping.",
         )
 
-    client = get_tradier_client()
+    # Sell through the account that actually HOLDS the position — using the
+    # default client would send a sell-to-close to an account with no such
+    # contracts (rejected at best, wrong-account sale at worst).
+    client = get_tradier_client(await account_view_for_trade(db, trade))
     qty = trade.remaining_qty or trade.quantity
     exit_price: Optional[float] = None
 
@@ -471,7 +489,9 @@ async def mark_trade_closed(
     if trade.status != TradeStatus.OPEN:
         raise HTTPException(status_code=400, detail="Trade is already closed")
 
-    client = get_tradier_client()
+    # The zombie stop/TP orders being cancelled below live in the account that
+    # holds the position, so cancel them through THAT account's client.
+    client = get_tradier_client(await account_view_for_trade(db, trade))
 
     # ── Cancel any resting broker orders first ────────────────────────────
     # The position is already flat at Tradier; an orphaned disaster stop or
@@ -586,49 +606,116 @@ def _parse_option_symbol(option_sym: str) -> tuple[str, str, str, float]:
 class OrphanCloseRequest(BaseModel):
     option_symbol: str
     quantity: int
+    # Which account holds the orphan.  Omitted → primary account, which is the
+    # correct default for a single-account setup and for legacy UI callers.
+    account_id: Optional[int] = None
 
 
 class OrphanAdoptRequest(BaseModel):
     option_symbol: str
     quantity: int
     cost_per_unit: float   # per-contract price (cost_basis_total / qty / 100)
+    account_id: Optional[int] = None
 
 
 @router.get("/reconcile", response_model=ReconcileResult)
-async def reconcile_positions(db: AsyncSession = Depends(get_db)):
+async def reconcile_positions(
+    db: AsyncSession = Depends(get_db),
+    account_id: Optional[int] = None,
+):
     """
-    Compare Tradier sandbox open positions against Ajoy open trades.
+    Compare Tradier open positions against Ajoy open trades.
     Enriches orphaned positions with current live price and estimated P&L.
+
+    Multi-account: with no `account_id` this sweeps EVERY account and tags each
+    row with the account it came from.  Reconciling only the default account
+    would report every other account's real positions as "orphans", which is
+    exactly the kind of false alarm that triggers a bad manual close.
     """
     from app.config import settings as _cfg
+    from app.services.accounts import all_account_views
     _excluded_tickers: set[str] = {
         s.strip().upper()
         for s in _cfg.orphan_stop_excluded_symbols.split(",")
         if s.strip()
     }
 
-    client = get_tradier_client()
-
-    try:
-        positions = await client.get_positions()
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not fetch Tradier positions: {exc}")
-
-    result = await db.execute(select(Trade).where(Trade.status == TradeStatus.OPEN))
-    open_trades = result.scalars().all()
-
-    ajoy_by_symbol: dict[str, Trade] = {t.option_symbol: t for t in open_trades}
-    tradier_by_symbol = {p.symbol: p for p in positions}
+    accounts = await all_account_views()
+    if account_id is not None:
+        accounts = [a for a in accounts if a.id == account_id]
+        if not accounts:
+            raise HTTPException(status_code=404, detail=f"Account {account_id} not found")
 
     orphaned: list[dict] = []
     ghosts:   list[dict] = []
     matched:  list[dict] = []
+    errors:   list[str]  = []
+
+    for acct in accounts:
+        ok = await _reconcile_one_account(
+            db, acct, _excluded_tickers, orphaned, ghosts, matched,
+        )
+        if not ok:
+            errors.append(acct.name)
+
+    # If EVERY account failed, nothing was reconciled — that must surface as a
+    # hard error, not as a reassuring empty report.  A partial failure returns
+    # 200 with the broken account flagged in ghost_in_ajoy, so one unreachable
+    # account cannot hide the other accounts' real positions.
+    if errors and len(errors) == len(accounts):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not fetch Tradier positions for: {', '.join(errors)}",
+        )
+
+    return ReconcileResult(
+        orphaned_in_tradier=orphaned,
+        ghost_in_ajoy=ghosts,
+        matched=matched,
+    )
+
+
+async def _reconcile_one_account(
+    db, acct, _excluded_tickers, orphaned: list, ghosts: list, matched: list,
+) -> bool:
+    """
+    Reconcile one account's broker positions against its Ajoy trades.
+    Returns False when the broker could not be reached for this account.
+    """
+    from app.services.accounts import scope as _scope
+
+    client = get_tradier_client(acct)
+
+    try:
+        positions = await client.get_positions()
+    except Exception as exc:
+        # One unreachable account must not blank the whole reconcile view.
+        _enrich_logger.warning(
+            "reconcile: could not fetch positions for account '%s': %s",
+            acct.name, exc,
+        )
+        ghosts.append({
+            "symbol": "-",
+            "account_id": acct.id,
+            "account_name": acct.name,
+            "note": f"Could not fetch Tradier positions for '{acct.name}': {exc}",
+        })
+        return False
+
+    result = await db.execute(_scope(
+        select(Trade).where(Trade.status == TradeStatus.OPEN), acct))
+    open_trades = result.scalars().all()
+
+    ajoy_by_symbol: dict[str, Trade] = {t.option_symbol: t for t in open_trades}
+    tradier_by_symbol = {p.symbol: p for p in positions}
 
     for sym, pos in tradier_by_symbol.items():
         if sym in ajoy_by_symbol:
             t = ajoy_by_symbol[sym]
             matched.append({
                 "symbol": sym,
+                "account_id": acct.id,
+                "account_name": acct.name,
                 "tradier_qty": pos.quantity,
                 "ajoy_trade_id": t.id,
                 "ajoy_qty": t.remaining_qty or t.quantity,
@@ -662,6 +749,8 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
 
             orphaned.append({
                 "symbol": sym,
+                "account_id": acct.id,
+                "account_name": acct.name,
                 "qty": qty,
                 "cost_per_unit": cost_per_unit,
                 "cost_basis_total": cost_basis_total,
@@ -674,6 +763,8 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
         if sym not in tradier_by_symbol:
             ghosts.append({
                 "symbol": sym,
+                "account_id": acct.id,
+                "account_name": acct.name,
                 "ajoy_trade_id": trade.id,
                 "ajoy_qty": trade.remaining_qty or trade.quantity,
                 "ajoy_entry": trade.entry_price,
@@ -681,21 +772,19 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
                         "The option may have expired or been closed outside Ajoy.",
             })
 
-    return ReconcileResult(
-        orphaned_in_tradier=orphaned,
-        ghost_in_ajoy=ghosts,
-        matched=matched,
-    )
+    return True
 
 
 @router.post("/orphan/close")
-async def close_orphan_position(payload: OrphanCloseRequest):
+async def close_orphan_position(
+    payload: OrphanCloseRequest, db: AsyncSession = Depends(get_db)
+):
     """
     Place a market sell_to_close order for an orphaned Tradier position
     (one that has no Ajoy DB record).  Does NOT create a DB trade record —
-    it simply executes the sell in the sandbox account.
+    it simply executes the sell in the named account.
     """
-    client = get_tradier_client()
+    client = get_tradier_client(await get_account_view(db, payload.account_id))
 
     try:
         order = await client.place_option_order(
@@ -803,19 +892,39 @@ async def update_trade_levels(
 
     # ── Update Tradier broker stop order (if stop changed) ───────────────
     from app.config import settings as _cfg
+    # Imported lazily (scheduler is heavy and imports this module's siblings)
+    # so the router keeps ONE definition of the disaster-stop level.
+    from app.services.scheduler import _broker_stop_price
+
+    # Resting broker orders live in the account that holds the position.
+    _trade_acct = await account_view_for_trade(db, trade)
 
     if stop is not None and _cfg.broker_stop_enabled:
-        client = get_tradier_client()
+        client = get_tradier_client(_trade_acct)
+
+        # ── Buffer the broker stop (Jul 27 2026, PLTR #194) ──────────────
+        # The ENTRY path places the broker order at _broker_stop_price(stop)
+        # — the bot's working stop minus broker_stop_buffer_pct — so it is a
+        # DISASTER backstop that only fills when the bot is dead or the move
+        # gapped a tick.  This editor used to send the raw `stop`, which put
+        # the broker order exactly ON the bot stop and silently promoted it
+        # to the primary exit: Tradier triggers on prints and fills at market,
+        # so it front-runs the bot's smarter mid-based marketable-limit exit.
+        # PLTR #194 had its broker stop moved $3.32 -> $3.53 by an edit and
+        # then exited "CLOSED via broker-side STOP @ $3.50".
+        broker_stop = _broker_stop_price(stop)
 
         if trade.stop_order_id:
             # Existing order — try to modify in place; fall back to cancel + replace
             modified = False
             try:
-                await client.modify_order(trade.stop_order_id, stop_price=stop)
+                await client.modify_order(trade.stop_order_id, stop_price=broker_stop)
                 modified = True
                 _enrich_logger.info(
-                    "[%s] Trade %d broker stop modified to $%.2f (order %s)",
-                    trade.symbol, trade.id, stop, trade.stop_order_id,
+                    "[%s] Trade %d broker disaster stop modified to $%.2f "
+                    "(bot stop $%.2f − %.0f%% buffer) (order %s)",
+                    trade.symbol, trade.id, broker_stop, stop,
+                    _cfg.broker_stop_buffer_pct * 100, trade.stop_order_id,
                 )
             except Exception as exc:
                 _enrich_logger.warning(
@@ -839,13 +948,15 @@ async def update_trade_levels(
                     side="sell_to_close",
                     quantity=trade.remaining_qty or trade.quantity,
                     order_type="stop",
-                    stop_price=stop,
+                    stop_price=broker_stop,
                 )
                 if stop_order.order_id:
                     trade.stop_order_id = stop_order.order_id
                     _enrich_logger.info(
-                        "[%s] Trade %d broker stop placed: order %s @ $%.2f",
-                        trade.symbol, trade.id, stop_order.order_id, stop,
+                        "[%s] Trade %d broker disaster stop placed: order %s @ $%.2f "
+                        "(bot stop $%.2f − %.0f%% buffer)",
+                        trade.symbol, trade.id, stop_order.order_id, broker_stop,
+                        stop, _cfg.broker_stop_buffer_pct * 100,
                     )
                 else:
                     _enrich_logger.error(
@@ -854,8 +965,8 @@ async def update_trade_levels(
                     )
             except Exception as exc2:
                 _enrich_logger.error(
-                    "[%s] Trade %d failed to place broker stop at $%.2f: %s",
-                    trade.symbol, trade.id, stop, exc2,
+                    "[%s] Trade %d failed to place broker disaster stop at $%.2f: %s",
+                    trade.symbol, trade.id, broker_stop, exc2,
                 )
 
     # ── Update broker-side TP limit order (if TP changed) ────────────────
@@ -870,7 +981,7 @@ async def update_trade_levels(
             trade.symbol, trade.id, trade.stop_order_id,
         )
     elif tp is not None and _cfg.broker_tp_enabled:
-        tp_client = get_tradier_client()
+        tp_client = get_tradier_client(_trade_acct)
         # Cancel the existing TP order first (if any)
         if trade.tp_order_id:
             try:
@@ -976,7 +1087,10 @@ async def adopt_orphan_position(
     levels = compute_trade_levels(entry_price, direction_str)
 
     # ── 4. Fetch current underlying price + VWAP for display ─────────────
-    client       = get_tradier_client()
+    # Adopt into the account that actually holds the contracts, so every
+    # later exit / broker order is routed there.
+    _adopt_acct  = await get_account_view(db, payload.account_id)
+    client       = get_tradier_client(_adopt_acct)
     underlying_price: Optional[float] = None
     vwap_at_entry: Optional[float]    = None
     try:
@@ -992,6 +1106,7 @@ async def adopt_orphan_position(
         option_symbol   = payload.option_symbol,
         direction       = Direction[direction_str],
         strategy_name   = "adopted_orphan",
+        account_id      = _adopt_acct.id,
         tradier_order_id= None,
         quantity        = payload.quantity,
         remaining_qty   = payload.quantity,

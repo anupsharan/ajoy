@@ -12,7 +12,8 @@ from fastapi.templating import Jinja2Templates
 from app.database import AsyncSessionLocal, init_db
 from app.models import Trade
 from sqlalchemy import select
-from app.routers import config, history, indicators, symbols, trades
+from app.routers import accounts, config, history, indicators, symbols, trades
+from app.services.accounts import seed_default_account
 from app.services.indicators import seed_indicators
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.s3.engine import s3_status, start_s3_engine, stop_s3_engine
@@ -64,6 +65,9 @@ async def lifespan(app: FastAPI):
     await init_db()
     async with AsyncSessionLocal() as db:
         await seed_indicators(db)
+        # One-time migration of the .env account into the accounts table.
+        # Idempotent — does nothing once any account exists.
+        await seed_default_account(db)
     start_scheduler()
     start_s3_engine()
     yield
@@ -78,6 +82,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 # Routers
+app.include_router(accounts.router)
 app.include_router(config.router)
 app.include_router(symbols.router)
 app.include_router(indicators.router)

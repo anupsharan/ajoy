@@ -68,7 +68,8 @@ def test_l1_put_signal_valid():
     vwap = calculate_vwap(bars_15m)
     bars_1m = [make_bar(vwap * 0.999, open_=vwap * 0.9995) for _ in range(30)]
 
-    with patch.object(settings, "vwap_min_clearance_pct", 0.0):
+    with patch.object(settings, "vwap_min_clearance_pct", 0.0), \
+         patch.object(settings, "s1_puts_enabled", True):
         sig = check_entry_signal(bars_1m, bars_15m)
     assert sig is not None
     assert sig.direction == "PUT"
@@ -166,7 +167,8 @@ def test_l1_valid_call_setup_produces_signal():
 def test_l1_valid_put_setup_produces_signal():
     """A clean falling-trend + VWAP-rejection setup must produce a PUT signal."""
     bars_1m, bars_15m = _put_bars()
-    with patch.object(settings, "vwap_min_clearance_pct", 0.0):
+    with patch.object(settings, "vwap_min_clearance_pct", 0.0), \
+         patch.object(settings, "s1_puts_enabled", True):
         result = check_entry_signal(bars_1m, bars_15m)
     assert result is not None
     assert result.direction == "PUT"

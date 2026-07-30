@@ -38,7 +38,7 @@ from sqlalchemy import select, func as sqlfunc
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import ExitReason, Symbol, Trade, TradeStatus
+from app.models import Direction, ExitReason, Symbol, Trade, TradeStatus
 from app.services.strategy import (
     completed_bars,
     check_entry_signal,
@@ -53,7 +53,9 @@ from app.services.strategy import (
     compute_structural_levels,
     get_structural_stop_target,
     calculate_atr,
+    calculate_vwap,
     check_chop_regime,
+    session_bars,
     should_activate_runner,
     is_market_open,
     is_past_cutoff,
@@ -61,6 +63,13 @@ from app.services.strategy import (
     ema_direction,
 )
 from app.services.tradier import get_tradier_client
+from app.services.accounts import (
+    AccountView,
+    account_of,
+    active_account_views,
+    all_account_views,
+    scope as _scope,
+)
 from app.services.strategy_ema import (
     check_5min_trend_filter,
     check_ema_cross_freshness,
@@ -78,6 +87,85 @@ _ET = _ZoneInfo("America/New_York")
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler(timezone="America/New_York")
+
+
+# ---------------------------------------------------------------------------
+# Multi-account helpers (Jul 25 2026)
+#
+# Every scanner/manager runs once PER ENABLED ACCOUNT.  Rather than threading
+# an `acct` argument through ~40 nested functions, the account travels ON THE
+# CLIENT — one Tradier client per account, each carrying its AccountView.
+# These three helpers are the whole interface:
+#
+#   _acct(client)      → the AccountView this client trades for
+#   _s(client, key)    → a setting, resolved against that account's overrides
+#   _aid(client)       → the account id to stamp on a new Trade row
+#
+# For a mock client (the entire existing test-suite) `_acct` returns the
+# legacy `.env` view, whose id is None → no account filtering, global
+# settings, exactly the pre-multi-account behaviour.
+# ---------------------------------------------------------------------------
+
+def _acct(client) -> AccountView:
+    """The account a client belongs to (legacy .env view when it has none)."""
+    return account_of(client)
+
+
+def _s(client, key: str):
+    """Resolve a setting for this client's account (override → global)."""
+    return account_of(client).setting(key)
+
+
+def _aid(client) -> int | None:
+    """Account id to stamp on trades opened through this client."""
+    return account_of(client).id
+
+
+def _tag(client) -> str:
+    """
+    Log prefix identifying the account, e.g. "[Roth#2] ".
+
+    Empty for the single/legacy account so existing log greps and the funnel
+    lines documented in CLAUDE.md §8 are unchanged when only one account
+    exists — multi-account logging must not break log forensics.
+    """
+    acct = account_of(client)
+    return f"[{acct.name}] " if acct.id is not None else ""
+
+
+async def _for_each_account(job_name: str, flag: str | None, fn) -> None:
+    """
+    Run `fn(acct)` once per enabled account, isolating failures.
+
+    One account throwing (bad token, revoked access, Tradier outage on that
+    account) must never stop the others from being scanned or — far more
+    important — from having their open trades MANAGED.
+
+    `flag` is the per-account strategy toggle to require (e.g. "s2_enabled");
+    None means the job applies to every account.
+    """
+    try:
+        accounts = await active_account_views()
+    except Exception as exc:
+        logger.error("%s: could not load accounts: %s", job_name, exc, exc_info=True)
+        return
+
+    if not accounts:
+        logger.debug("%s: no enabled accounts — nothing to do", job_name)
+        return
+
+    for acct in accounts:
+        if flag is not None and not acct.strategy_enabled(flag):
+            logger.debug("%s: account '%s' not enrolled in %s — skipping",
+                         job_name, acct.name, flag)
+            continue
+        try:
+            await fn(acct)
+        except Exception as exc:
+            logger.error(
+                "%s failed for account '%s': %s", job_name, acct.name, exc,
+                exc_info=True,
+            )
 
 # ---------------------------------------------------------------------------
 # Shared bar cache — avoids duplicate Tradier API calls when S1 and S2 both
@@ -249,9 +337,13 @@ _entry_lock: asyncio.Lock = asyncio.Lock()
 # Shared DB helpers
 # ---------------------------------------------------------------------------
 
-async def _get_daily_pnl(db) -> float:
+async def _get_daily_pnl(db, acct: AccountView | None = None) -> float:
     """
     Return today's combined P&L for the MAX_DAILY_LOSS gate (G2).
+
+    Scoped to `acct` when one is given: each account carries its own daily
+    loss budget, so a bad day in one account cannot halt trading in another.
+    `acct=None` (or the legacy .env view) counts every trade, unchanged.
 
     = realized P&L from closed trades today
     + worst-case unrealized from open trades today
@@ -268,20 +360,20 @@ async def _get_daily_pnl(db) -> float:
     )
 
     # ── Realized P&L (closed trades) ────────────────────────────────────────
-    closed_result = await db.execute(
+    closed_result = await db.execute(_scope(
         select(sqlfunc.sum(Trade.pnl)).where(
             Trade.status == TradeStatus.CLOSED,
             Trade.exit_time >= today_start,
-        )
+        ), acct)
     )
     realized = float(closed_result.scalar() or 0)
 
     # ── Worst-case unrealized (open trades today at stop level) ─────────────
-    open_result = await db.execute(
+    open_result = await db.execute(_scope(
         select(Trade).where(
             Trade.status == TradeStatus.OPEN,
             Trade.entry_time >= today_start,
-        )
+        ), acct)
     )
     open_trades = open_result.scalars().all()
     unrealized_floor = sum(
@@ -293,37 +385,37 @@ async def _get_daily_pnl(db) -> float:
     return realized + unrealized_floor
 
 
-async def _get_symbol_losses_today(db, ticker: str) -> int:
-    """Count today's losing (PnL < 0) closed trades for a symbol."""
+async def _get_symbol_losses_today(db, ticker: str, acct: AccountView | None = None) -> int:
+    """Count today's losing (PnL < 0) closed trades for a symbol, per account."""
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(
         tzinfo=timezone.utc
     )
-    result = await db.execute(
+    result = await db.execute(_scope(
         select(sqlfunc.count(Trade.id)).where(
             Trade.symbol == ticker,
             Trade.status == TradeStatus.CLOSED,
             Trade.pnl < 0,
             Trade.exit_time >= today_start,
-        )
+        ), acct)
     )
     return int(result.scalar() or 0)
 
 
-async def _get_symbol_trades_today(db, ticker: str) -> int:
-    """Count all entries (open + closed) on a symbol today."""
+async def _get_symbol_trades_today(db, ticker: str, acct: AccountView | None = None) -> int:
+    """Count all entries (open + closed) on a symbol today, per account."""
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(
         tzinfo=timezone.utc
     )
-    result = await db.execute(
+    result = await db.execute(_scope(
         select(sqlfunc.count(Trade.id)).where(
             Trade.symbol == ticker,
             Trade.entry_time >= today_start,
-        )
+        ), acct)
     )
     return int(result.scalar() or 0)
 
 
-async def _get_recent_bad_exit(db, ticker: str) -> Trade | None:
+async def _get_recent_bad_exit(db, ticker: str, acct: AccountView | None = None) -> Trade | None:
     """
     Return the most recent STOP or VWAP_BREAK exit on this symbol within
     the cooldown window, or None if there is none.
@@ -331,21 +423,28 @@ async def _get_recent_bad_exit(db, ticker: str) -> Trade | None:
     cooldown_start = datetime.now(tz=timezone.utc) - timedelta(
         minutes=settings.cooldown_minutes
     )
-    result = await db.execute(
+    result = await db.execute(_scope(
         select(Trade)
         .where(
             Trade.symbol == ticker,
             Trade.status == TradeStatus.CLOSED,
-            Trade.exit_reason.in_([ExitReason.STOP, ExitReason.VWAP_BREAK, ExitReason.MANUAL]),
+            # QUICK_LOSS + STRUCT_EXIT added Jul 27 2026: S2 quick-lossed ORCL
+            # at 14:58 and S1 re-entered the SAME symbol 8 minutes later
+            # (#197 -> #198) because this list ignored both reasons.  S2's
+            # own cooldown already counted them; S1's did not.
+            Trade.exit_reason.in_([
+                ExitReason.STOP, ExitReason.VWAP_BREAK, ExitReason.MANUAL,
+                ExitReason.QUICK_LOSS, ExitReason.STRUCT_EXIT,
+            ]),
             Trade.exit_time >= cooldown_start,
         )
         .order_by(Trade.exit_time.desc())
-        .limit(1)
+        .limit(1), acct)
     )
     return result.scalar_one_or_none()
 
 
-async def _get_recent_trend_reversal(db, ticker: str) -> Trade | None:
+async def _get_recent_trend_reversal(db, ticker: str, acct: AccountView | None = None) -> Trade | None:
     """
     Return the most recent TREND_REVERSAL exit on this symbol within the
     trend_reversal_cooldown_minutes window, or None if there is none.
@@ -358,7 +457,7 @@ async def _get_recent_trend_reversal(db, ticker: str) -> Trade | None:
     cooldown_start = datetime.now(tz=timezone.utc) - timedelta(
         minutes=settings.trend_reversal_cooldown_minutes
     )
-    result = await db.execute(
+    result = await db.execute(_scope(
         select(Trade)
         .where(
             Trade.symbol == ticker,
@@ -367,12 +466,12 @@ async def _get_recent_trend_reversal(db, ticker: str) -> Trade | None:
             Trade.exit_time >= cooldown_start,
         )
         .order_by(Trade.exit_time.desc())
-        .limit(1)
+        .limit(1), acct)
     )
     return result.scalar_one_or_none()
 
 
-async def _get_recent_tp_exit(db, ticker: str) -> Trade | None:
+async def _get_recent_tp_exit(db, ticker: str, acct: AccountView | None = None) -> Trade | None:
     """
     Return the most recent TP1, TP2 or TRAILING_STOP exit on this symbol
     within the tp_cooldown_minutes window, or None if there is none.
@@ -388,7 +487,7 @@ async def _get_recent_tp_exit(db, ticker: str) -> Trade | None:
     cooldown_start = datetime.now(tz=timezone.utc) - timedelta(
         minutes=settings.tp_cooldown_minutes
     )
-    result = await db.execute(
+    result = await db.execute(_scope(
         select(Trade)
         .where(
             Trade.symbol == ticker,
@@ -399,12 +498,12 @@ async def _get_recent_tp_exit(db, ticker: str) -> Trade | None:
             Trade.exit_time >= cooldown_start,
         )
         .order_by(Trade.exit_time.desc())
-        .limit(1)
+        .limit(1), acct)
     )
     return result.scalar_one_or_none()
 
 
-async def _get_tp_exit_for_chase_check(db, ticker: str) -> Trade | None:
+async def _get_tp_exit_for_chase_check(db, ticker: str, acct: AccountView | None = None) -> Trade | None:
     """
     Return the most recent TP1/TP2/TRAILING_STOP exit for this symbol today,
     used to enforce the same-direction price-chase guard.
@@ -416,7 +515,7 @@ async def _get_tp_exit_for_chase_check(db, ticker: str) -> Trade | None:
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(
         tzinfo=timezone.utc
     )
-    result = await db.execute(
+    result = await db.execute(_scope(
         select(Trade)
         .where(
             Trade.symbol == ticker,
@@ -427,12 +526,12 @@ async def _get_tp_exit_for_chase_check(db, ticker: str) -> Trade | None:
             Trade.exit_time >= today_start,
         )
         .order_by(Trade.exit_time.desc())
-        .limit(1)
+        .limit(1), acct)
     )
     return result.scalar_one_or_none()
 
 
-async def _get_s2_tp_exit_for_chase_check(db, ticker: str) -> Trade | None:
+async def _get_s2_tp_exit_for_chase_check(db, ticker: str, acct: AccountView | None = None) -> Trade | None:
     """
     Return the most recent PROFITABLE S2 exit for this symbol today.
 
@@ -447,7 +546,7 @@ async def _get_s2_tp_exit_for_chase_check(db, ticker: str) -> Trade | None:
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(
         tzinfo=timezone.utc
     )
-    result = await db.execute(
+    result = await db.execute(_scope(
         select(Trade)
         .where(
             Trade.symbol == ticker,
@@ -458,12 +557,12 @@ async def _get_s2_tp_exit_for_chase_check(db, ticker: str) -> Trade | None:
             Trade.exit_time >= today_start,
         )
         .order_by(Trade.exit_time.desc())
-        .limit(1)
+        .limit(1), acct)
     )
     return result.scalar_one_or_none()
 
 
-async def _get_s2_recent_bad_exit(db, ticker: str) -> Trade | None:
+async def _get_s2_recent_bad_exit(db, ticker: str, acct: AccountView | None = None) -> Trade | None:
     """
     S2 cooldown: return the most recent STOP or EMA_CROSS exit on this symbol
     within s2_cooldown_minutes, or None.
@@ -475,7 +574,7 @@ async def _get_s2_recent_bad_exit(db, ticker: str) -> Trade | None:
     cooldown_start = datetime.now(tz=timezone.utc) - timedelta(
         minutes=settings.s2_cooldown_minutes
     )
-    result = await db.execute(
+    result = await db.execute(_scope(
         select(Trade)
         .where(
             Trade.symbol == ticker,
@@ -491,12 +590,12 @@ async def _get_s2_recent_bad_exit(db, ticker: str) -> Trade | None:
             Trade.exit_time >= cooldown_start,
         )
         .order_by(Trade.exit_time.desc())
-        .limit(1)
+        .limit(1), acct)
     )
     return result.scalar_one_or_none()
 
 
-async def _get_s2_daily_pnl(db) -> float:
+async def _get_s2_daily_pnl(db, acct: AccountView | None = None) -> float:
     """
     Sum of realized S2 P&L for the current UTC day.
     Only counts closed ema_cross trades with a non-null pnl — open positions
@@ -506,13 +605,13 @@ async def _get_s2_daily_pnl(db) -> float:
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(
         tzinfo=timezone.utc
     )
-    result = await db.execute(
+    result = await db.execute(_scope(
         select(sqlfunc.sum(Trade.pnl)).where(
             Trade.strategy_name == "ema_cross",
             Trade.status == TradeStatus.CLOSED,
             Trade.pnl.is_not(None),
             Trade.exit_time >= today_start,
-        )
+        ), acct)
     )
     total = result.scalar()
     return float(total) if total is not None else 0.0
@@ -523,31 +622,38 @@ async def _get_s2_daily_pnl(db) -> float:
 # ---------------------------------------------------------------------------
 
 async def scan_for_entries() -> None:
+    """S1 entry scan — runs once per enabled account enrolled in S1."""
     if not is_in_trading_window():
         return
+    await _for_each_account("scan_for_entries", "s1_enabled", _scan_for_entries_account)
 
-    client = get_tradier_client()
+
+async def _scan_for_entries_account(acct: AccountView) -> None:
+    client = get_tradier_client(acct)
+    _t = _tag(client)
 
     async with AsyncSessionLocal() as db:
-        # ── G2: Daily P&L guard ──────────────────────────────────────────────
-        daily_pnl = await _get_daily_pnl(db)
-        if daily_pnl <= -abs(settings.max_daily_loss):
+        # ── G2: Daily P&L guard (this account's own budget) ──────────────────
+        daily_pnl = await _get_daily_pnl(db, acct)
+        if daily_pnl <= -abs(_s(client, "max_daily_loss")):
             logger.info(
-                "Daily loss limit reached ($%.2f) — no new entries today", daily_pnl
+                "%sDaily loss limit reached ($%.2f) — no new entries today",
+                _t, daily_pnl,
             )
             return
 
         # ── G3: Max concurrent open trades ───────────────────────────────────
-        open_count_result = await db.execute(
+        open_count_result = await db.execute(_scope(
             # S3 (stocks, Moomoo-data engine) manages its own slots —
             # it must not consume S1/S2 option-trade capacity.
             select(Trade).where(Trade.status == TradeStatus.OPEN,
-                                Trade.strategy_name != "S3")
+                                Trade.strategy_name != "S3"), acct)
         )
         open_trades_all = open_count_result.scalars().all()
-        if len(open_trades_all) >= settings.max_open_trades:
+        if len(open_trades_all) >= _s(client, "max_open_trades"):
             logger.debug(
-                "Max open trades (%d) reached — skipping scan", settings.max_open_trades
+                "%sMax open trades (%d) reached — skipping scan",
+                _t, _s(client, "max_open_trades"),
             )
             return
 
@@ -584,8 +690,8 @@ async def scan_for_entries() -> None:
     regime = get_regime_from_vwap(qqq_bars_1m)
 
     logger.info(
-        "[adaptive-band] %s → band=%.2f%% (%s) | regime=%s",
-        settings.adaptive_band_symbol, band_pct * 100, band_label, regime.upper(),
+        "%s[adaptive-band] %s → band=%.2f%% (%s) | regime=%s",
+        _t, settings.adaptive_band_symbol, band_pct * 100, band_label, regime.upper(),
     )
 
     # ── Chop-day gate — skip the whole scan cycle on range-less days ────────
@@ -607,10 +713,121 @@ async def scan_for_entries() -> None:
                     await _attempt_entry(sym_db, client, ticker, regime, band_pct, qqq_dist_signed)
                 except Exception as exc:
                     logger.error(
-                        "scan_for_entries error for %s: %s", ticker, exc, exc_info=True
+                        "%sscan_for_entries error for %s: %s",
+                        _t, ticker, exc, exc_info=True,
                     )
 
     await asyncio.gather(*[_scan_one(sym.ticker) for sym in symbols])
+
+
+async def _await_entry_fill(
+    client, ticker: str, order, order_type_str: str,
+    order_price: float, ask_price: float,
+    option_symbol: str, qty: int,
+) -> float | None:
+    """
+    Wait for a placed buy order to fill and return the actual entry price.
+
+    Shared by S1 and PUT-scalp entries so the safety-critical fill logic has
+    exactly ONE implementation:
+      - limit orders: poll to timeout, cancel on timeout, then re-check the
+        final status — a fill can RACE the cancel (ghost-trade guard: an
+        untracked live position must never be left behind)
+      - market orders: verify not rejected before the caller writes to the DB
+    Returns None when no position was (safely) opened.
+    """
+    if order_type_str == "limit":
+        logger.info(
+            "[%s] Limit order %s placed: %s x%d @ $%.2f (ask $%.2f, saving $%.2f/contract)",
+            ticker, order.order_id, option_symbol, qty, order_price, ask_price,
+            ask_price - order_price,
+        )
+        # Poll for fill — cancel and skip if not filled within timeout.
+        # We check every 2 seconds so the total wait is at most
+        # limit_order_timeout_seconds (default 15 s).
+        filled   = False
+        deadline = datetime.now(tz=timezone.utc) + timedelta(
+            seconds=settings.limit_order_timeout_seconds
+        )
+        while datetime.now(tz=timezone.utc) < deadline:
+            await asyncio.sleep(2)
+            try:
+                status_data = await client.get_order_status(order.order_id)
+                status_str  = (status_data.get("status") or "").lower()
+            except Exception:
+                status_str  = "unknown"
+            if status_str == "filled":
+                filled = True
+                break
+            if status_str in ("rejected", "canceled", "cancelled"):
+                logger.info(
+                    "[%s] Limit order %s was %s — aborting entry",
+                    ticker, order.order_id, status_str.upper(),
+                )
+                return None
+        if not filled:
+            logger.info(
+                "[%s] Limit order %s not filled within %ds — canceling",
+                ticker, order.order_id, settings.limit_order_timeout_seconds,
+            )
+            try:
+                await client.cancel_order(order.order_id)
+            except Exception as exc:
+                logger.warning(
+                    "[%s] Failed to cancel limit order %s: %s", ticker, order.order_id, exc
+                )
+
+            # ── Post-cancel race check (Fix #3) ──────────────────────────────
+            # A fill can race with the cancel: Tradier may process the fill
+            # before the cancel, leaving a real live position with no Trade record.
+            # Check the final order status to catch this window.
+            try:
+                post_status_data = await client.get_order_status(order.order_id)
+                post_status_str  = (post_status_data.get("status") or "").lower()
+            except Exception:
+                post_status_str  = "unknown"
+
+            if post_status_str == "filled":
+                # Fill won the race — record the trade normally below.
+                logger.info(
+                    "[%s] Limit order %s filled during cancel window — "
+                    "recording trade to avoid untracked live position.",
+                    ticker, order.order_id,
+                )
+                filled = True
+            else:
+                logger.info(
+                    "[%s] Limit order %s confirmed %s — skipping entry.",
+                    ticker, order.order_id, post_status_str.upper(),
+                )
+                return None
+
+        # Use the actual fill price — the limit may have been improved by the
+        # market-maker (common when placing at the mid).  Stop/TP levels will
+        # be recalculated from this value so they reflect real risk.
+        actual_fill = await client.get_fill_price(order.order_id)
+        if actual_fill and actual_fill > 0:
+            if abs(actual_fill - order_price) > 0.005:
+                logger.info(
+                    "[%s] Limit filled at $%.2f (limit was $%.2f, diff %+.2f)",
+                    ticker, actual_fill, order_price, actual_fill - order_price,
+                )
+            return actual_fill
+        return order_price   # fallback: fill not yet available
+
+    # Market order — verify it was not rejected before the caller writes to the DB.
+    try:
+        order_status_data = await client.get_order_status(order.order_id)
+        order_status_str  = (order_status_data.get("status") or "").lower()
+    except Exception:
+        order_status_str  = "unknown"
+    if order_status_str in ("rejected", "canceled", "cancelled"):
+        logger.error(
+            "[%s] Buy order %s was %s — aborting entry, no DB record created.",
+            ticker, order.order_id, order_status_str.upper(),
+        )
+        return None
+    return ask_price
 
 
 async def _attempt_entry(
@@ -620,20 +837,25 @@ async def _attempt_entry(
     """
     Run the full 8-gate entry stack for one symbol.
     Returns early (no trade) at the first failed gate.
+
+    Every DB gate below is scoped to the client's account: two accounts are
+    independent books, so an open AMZN position (or a cooldown) in one must
+    not block the same signal in another.
     """
-    # ── G4: Per-symbol open trade ────────────────────────────────────────
-    existing = await db.execute(
+    acct = _acct(client)
+    # ── G4: Per-symbol open trade (in THIS account) ──────────────────────
+    existing = await db.execute(_scope(
         select(Trade).where(
             Trade.symbol == ticker,
             Trade.status == TradeStatus.OPEN,
-        )
+        ), acct)
     )
-    if existing.scalar_one_or_none():
+    if existing.scalars().first():
         return
 
     # ── G5: Per-symbol daily loss cap ────────────────────────────────────
     if settings.max_losses_per_symbol_per_day > 0:
-        sym_losses = await _get_symbol_losses_today(db, ticker)
+        sym_losses = await _get_symbol_losses_today(db, ticker, acct)
         if sym_losses >= settings.max_losses_per_symbol_per_day:
             logger.info(
                 "[%s] Per-symbol loss cap reached (%d/%d losing trades today) — "
@@ -648,7 +870,7 @@ async def _attempt_entry(
     # Once a symbol has had its quota, it is skipped for the rest of the day
     # and the slot opens up for a fresh symbol.
     if settings.max_trades_per_symbol_per_day > 0:
-        sym_trades = await _get_symbol_trades_today(db, ticker)
+        sym_trades = await _get_symbol_trades_today(db, ticker, acct)
         if sym_trades >= settings.max_trades_per_symbol_per_day:
             logger.debug(
                 "[%s] Daily trade cap reached (%d/%d trades today) — "
@@ -658,7 +880,7 @@ async def _attempt_entry(
             return
 
     # ── G6: Cooldown after STOP / VWAP_BREAK ────────────────────────────
-    recent_bad = await _get_recent_bad_exit(db, ticker)
+    recent_bad = await _get_recent_bad_exit(db, ticker, acct)
     if recent_bad:
         logger.info(
             "[%s] Cooldown active — last %s exit at %s (%d-min window)",
@@ -670,7 +892,7 @@ async def _attempt_entry(
         return
 
     # ── G6b: Cooldown after TREND_REVERSAL ───────────────────────────────
-    recent_tr = await _get_recent_trend_reversal(db, ticker)
+    recent_tr = await _get_recent_trend_reversal(db, ticker, acct)
     if recent_tr:
         logger.info(
             "[%s] TREND_REVERSAL cooldown active — last exit at %s (%d-min window)",
@@ -684,7 +906,7 @@ async def _attempt_entry(
     # After a profitable exit the move is typically exhausted.  Re-entering
     # immediately risks chasing a spent momentum spike (e.g. NVDA TP2 at
     # 1:53 PM → new CALL at 1:57 PM right at the spike top).
-    recent_tp = await _get_recent_tp_exit(db, ticker)
+    recent_tp = await _get_recent_tp_exit(db, ticker, acct)
     if recent_tp:
         logger.info(
             "[%s] TP cooldown active — last %s exit at %s (%d-min window)",
@@ -929,7 +1151,7 @@ async def _attempt_entry(
     # played out (e.g. SOFI PUT $0.17 → TP2 → re-enter PUT at $0.36 = +112%).
     # Different direction is always allowed (fresh setup, no chase concern).
     if settings.tp_chase_pct > 0:
-        tp_chase_trade = await _get_tp_exit_for_chase_check(db, ticker)
+        tp_chase_trade = await _get_tp_exit_for_chase_check(db, ticker, acct)
         if (
             tp_chase_trade
             and tp_chase_trade.direction.value == direction
@@ -1000,21 +1222,23 @@ async def _attempt_entry(
     # With structural levels the risk fraction is the ACTUAL stop distance,
     # so every trade risks ~risk_per_trade dollars at its structural stop.
     risk_frac = struct.risk_pct if struct else settings.stop_loss_pct
-    budget_qty = int(settings.amount_per_trade / cost_per_contract)
-    if settings.risk_per_trade > 0 and risk_frac > 0:
+    _amount_per_trade = _s(client, "amount_per_trade")
+    _risk_per_trade   = _s(client, "risk_per_trade")
+    budget_qty = int(_amount_per_trade / cost_per_contract)
+    if _risk_per_trade > 0 and risk_frac > 0:
         risk_per_contract = cost_per_contract * risk_frac
-        risk_qty = int(settings.risk_per_trade / risk_per_contract)
+        risk_qty = int(_risk_per_trade / risk_per_contract)
         qty = min(risk_qty, budget_qty)
     else:
         qty = budget_qty
 
     if qty < 1:
         logger.info(
-            "[%s] Skipping — 1 contract @ $%.2f would exceed limits "
+            "%s[%s] Skipping — 1 contract @ $%.2f would exceed limits "
             "(premium $%.0f > budget $%.0f, or risk $%.0f > risk/trade $%.0f)",
-            ticker, order_price,
-            cost_per_contract, settings.amount_per_trade,
-            cost_per_contract * risk_frac, settings.risk_per_trade,
+            _tag(client), ticker, order_price,
+            cost_per_contract, _amount_per_trade,
+            cost_per_contract * risk_frac, _risk_per_trade,
         )
         return
 
@@ -1026,14 +1250,14 @@ async def _attempt_entry(
     # The lock is held only for the API call (~100-200 ms), then released.
     order: object = None
     async with _entry_lock:
-        open_recheck = await db.execute(
+        open_recheck = await db.execute(_scope(
             select(sqlfunc.count(Trade.id)).where(Trade.status == TradeStatus.OPEN,
-                                                  Trade.strategy_name != "S3")
+                                                  Trade.strategy_name != "S3"), acct)
         )
-        if int(open_recheck.scalar() or 0) >= settings.max_open_trades:
+        if int(open_recheck.scalar() or 0) >= _s(client, "max_open_trades"):
             logger.debug(
-                "[%s] Max open trades (%d) reached (re-check inside lock) — skipping",
-                ticker, settings.max_open_trades,
+                "%s[%s] Max open trades (%d) reached (re-check inside lock) — skipping",
+                _tag(client), ticker, _s(client, "max_open_trades"),
             )
             return
 
@@ -1058,99 +1282,12 @@ async def _attempt_entry(
             )
     # _entry_lock released — other scans can now proceed
 
-    if order_type_str == "limit":
-        logger.info(
-            "[%s] Limit order %s placed: %s x%d @ $%.2f (ask $%.2f, saving $%.2f/contract)",
-            ticker, order.order_id, selected.symbol, qty, order_price, ask_price,
-            ask_price - order_price,
-        )
-        # Poll for fill — cancel and skip if not filled within timeout.
-        # We check every 2 seconds so the total wait is at most
-        # limit_order_timeout_seconds (default 15 s).
-        filled   = False
-        deadline = datetime.now(tz=timezone.utc) + timedelta(
-            seconds=settings.limit_order_timeout_seconds
-        )
-        while datetime.now(tz=timezone.utc) < deadline:
-            await asyncio.sleep(2)
-            try:
-                status_data = await client.get_order_status(order.order_id)
-                status_str  = (status_data.get("status") or "").lower()
-            except Exception:
-                status_str  = "unknown"
-            if status_str == "filled":
-                filled = True
-                break
-            if status_str in ("rejected", "canceled", "cancelled"):
-                logger.info(
-                    "[%s] Limit order %s was %s — aborting entry",
-                    ticker, order.order_id, status_str.upper(),
-                )
-                return
-        if not filled:
-            logger.info(
-                "[%s] Limit order %s not filled within %ds — canceling",
-                ticker, order.order_id, settings.limit_order_timeout_seconds,
-            )
-            try:
-                await client.cancel_order(order.order_id)
-            except Exception as exc:
-                logger.warning(
-                    "[%s] Failed to cancel limit order %s: %s", ticker, order.order_id, exc
-                )
-
-            # ── Post-cancel race check (Fix #3) ──────────────────────────────
-            # A fill can race with the cancel: Tradier may process the fill
-            # before the cancel, leaving a real live position with no Trade record.
-            # Check the final order status to catch this window.
-            try:
-                post_status_data = await client.get_order_status(order.order_id)
-                post_status_str  = (post_status_data.get("status") or "").lower()
-            except Exception:
-                post_status_str  = "unknown"
-
-            if post_status_str == "filled":
-                # Fill won the race — record the trade normally below.
-                logger.info(
-                    "[%s] Limit order %s filled during cancel window — "
-                    "recording trade to avoid untracked live position.",
-                    ticker, order.order_id,
-                )
-                filled = True
-            else:
-                logger.info(
-                    "[%s] Limit order %s confirmed %s — skipping entry.",
-                    ticker, order.order_id, post_status_str.upper(),
-                )
-                return
-
-        # Use the actual fill price — the limit may have been improved by the
-        # market-maker (common when placing at the mid).  Stop/TP levels will
-        # be recalculated from this value so they reflect real risk.
-        actual_fill = await client.get_fill_price(order.order_id)
-        if actual_fill and actual_fill > 0:
-            if abs(actual_fill - order_price) > 0.005:
-                logger.info(
-                    "[%s] Limit filled at $%.2f (limit was $%.2f, diff %+.2f)",
-                    ticker, actual_fill, order_price, actual_fill - order_price,
-                )
-            entry_price = actual_fill
-        else:
-            entry_price = order_price   # fallback: fill not yet available
-    else:
-        # Market order — verify it was not rejected before writing to the DB.
-        try:
-            order_status_data = await client.get_order_status(order.order_id)
-            order_status_str  = (order_status_data.get("status") or "").lower()
-        except Exception:
-            order_status_str  = "unknown"
-        if order_status_str in ("rejected", "canceled", "cancelled"):
-            logger.error(
-                "[%s] Buy order %s was %s — aborting entry, no DB record created.",
-                ticker, order.order_id, order_status_str.upper(),
-            )
-            return
-        entry_price = ask_price
+    entry_price = await _await_entry_fill(
+        client, ticker, order, order_type_str, order_price, ask_price,
+        selected.symbol, qty,
+    )
+    if entry_price is None:
+        return
 
     # Recompute levels from the ACTUAL fill price.  Structural: keep the same
     # underlying anchor levels, re-translate to option prices via delta.
@@ -1184,6 +1321,7 @@ async def _attempt_entry(
         option_symbol=selected.symbol,
         direction=signal.direction,
         strategy_name="vwap_pullback",
+        account_id=_aid(client),
         tradier_order_id=order.order_id,
         quantity=qty,
         remaining_qty=qty,
@@ -1197,9 +1335,9 @@ async def _attempt_entry(
     db.add(trade)
     await db.commit()
     logger.info(
-        "[%s] Trade OPENED: %s %s x%d @ $%.2f  SL=%.2f  TP=%.2f  "
+        "%s[%s] Trade OPENED: %s %s x%d @ $%.2f  SL=%.2f  TP=%.2f  "
         "(premium $%.0f, risk-at-stop $%.0f)",
-        ticker, direction, selected.symbol, qty, entry_price,
+        _tag(client), ticker, direction, selected.symbol, qty, entry_price,
         levels["stop_price"], levels["tp2_price"],
         qty * cost_per_contract,
         qty * (entry_price - levels["stop_price"]) * 100,
@@ -1230,6 +1368,335 @@ async def _attempt_entry(
 
 
 # ---------------------------------------------------------------------------
+# Entry scanner — PUT Scalp mode ("PS", Jul 23 2026)
+#
+# Momentum-short experiment, independent of the S1/S2 PUT kill switches.
+# The Jul 22-23 post-mortem showed pullback-style PUT entries are adversely
+# selected (no fill on trend days, filled-then-bounced on chop days).  PS
+# enters on BREAKDOWN state instead: Stock Trend (completed-bar 15-min EMA)
+# bearish AND Thesis (underlying below session VWAP beyond the exit band)
+# — the same two signals SIGNAL_FADE uses to exit, required at entry.
+# Tight brackets (TP +8% / SL −7%), half size, own spread gate.
+# ---------------------------------------------------------------------------
+
+async def scan_for_put_scalp() -> None:
+    """PS entry scan — once per enabled account enrolled in PUT Scalp mode."""
+    # Global master switch first: PUT_SCALP_ENABLED=0 kills PS everywhere,
+    # regardless of any account's own toggle (§6b: "if PS bleeds, kill
+    # PUT_SCALP_ENABLED alone").
+    if not settings.put_scalp_enabled:
+        return
+    # Calendar AND clock guard (ghost-trade lesson: S2 checked the clock but
+    # not the calendar and ran on a Saturday).
+    if not is_in_trading_window() or not is_market_open():
+        return
+    await _for_each_account("scan_for_put_scalp", "put_scalp_enabled",
+                            _scan_for_put_scalp_account)
+
+
+async def _scan_for_put_scalp_account(acct: AccountView) -> None:
+    client = get_tradier_client(acct)
+    _t = _tag(client)
+
+    async with AsyncSessionLocal() as db:
+        # Daily P&L guard — shared with S1/S2, scoped to this account
+        daily_pnl = await _get_daily_pnl(db, acct)
+        if daily_pnl <= -abs(_s(client, "max_daily_loss")):
+            return
+
+        # PS capacity: its own small cap, ADDITIVE to the S1/S2 slots so a
+        # scalp can never squeeze out a CALL entry (the CALL-only evaluation
+        # must stay uncontaminated — capacity-wise too).
+        open_result = await db.execute(_scope(
+            select(Trade).where(Trade.status == TradeStatus.OPEN,
+                                Trade.strategy_name == "put_scalp"), acct)
+        )
+        if len(open_result.scalars().all()) >= _s(client, "put_scalp_max_open"):
+            return
+
+        sym_result = await db.execute(
+            select(Symbol).where(Symbol.active == True, Symbol.s1_enabled == True)  # noqa: E712
+        )
+        symbols = sym_result.scalars().all()
+
+    # QQQ regime — never short while the market proxy is above its VWAP.
+    qqq_bars_1m: list = []
+    try:
+        qqq_bars_1m = await _get_bars(
+            client, settings.adaptive_band_symbol, interval="1min", lookback_days=1
+        )
+    except Exception as exc:
+        logger.warning("[PS] Could not fetch QQQ bars: %s — regime neutral", exc)
+    if get_regime_from_vwap(qqq_bars_1m) == "bullish":
+        logger.debug("%s[PS] QQQ above VWAP — no PUT scalps this cycle", _t)
+        return
+
+    # Chop gate — breakdown continuation needs range like everything else.
+    if await _chop_gate_blocks(client, qqq_bars_1m):
+        return
+
+    sem = asyncio.Semaphore(3)
+
+    async def _scan_one(ticker: str) -> None:
+        async with sem:
+            async with AsyncSessionLocal() as sym_db:
+                try:
+                    await _attempt_put_scalp(sym_db, client, ticker)
+                except Exception as exc:
+                    logger.error(
+                        "%sscan_for_put_scalp error for %s: %s",
+                        _t, ticker, exc, exc_info=True,
+                    )
+
+    await asyncio.gather(*[_scan_one(sym.ticker) for sym in symbols])
+
+
+async def _attempt_put_scalp(db, client, ticker: str) -> None:
+    """PS entry stack for one symbol — state signal + quality gates + entry."""
+    acct = _acct(client)
+    # No open trade on this symbol IN THIS ACCOUNT, any strategy
+    existing = await db.execute(_scope(
+        select(Trade).where(Trade.symbol == ticker,
+                            Trade.status == TradeStatus.OPEN), acct)
+    )
+    if existing.scalars().first():
+        return
+
+    # PS cooldown — Trend+Thesis agreement is a STATE, not an event.  Without
+    # this the mode would re-enter the instant a trade exits, all day long.
+    _cd_cutoff = datetime.now(tz=timezone.utc) - timedelta(
+        minutes=settings.put_scalp_cooldown_minutes
+    )
+    recent_ps = await db.execute(_scope(
+        select(Trade).where(
+            Trade.symbol == ticker,
+            Trade.strategy_name == "put_scalp",
+            Trade.status == TradeStatus.CLOSED,
+            Trade.exit_time >= _cd_cutoff,
+        ), acct)
+    )
+    if recent_ps.scalars().first():
+        logger.debug("%s[PS][%s] Cooldown active (%d min after any PS exit)",
+                     _tag(client), ticker, settings.put_scalp_cooldown_minutes)
+        return
+
+    # Per-symbol daily caps — shared with S1
+    if settings.max_losses_per_symbol_per_day > 0:
+        if await _get_symbol_losses_today(db, ticker, acct) >= settings.max_losses_per_symbol_per_day:
+            return
+    if settings.max_trades_per_symbol_per_day > 0:
+        if await _get_symbol_trades_today(db, ticker, acct) >= settings.max_trades_per_symbol_per_day:
+            return
+
+    bars_1m  = await _get_bars(client, ticker, interval="1min",  lookback_days=1)
+    bars_15m = await _get_bars(client, ticker, interval="15min",
+                               lookback_days=settings.trend_lookback_days)
+    if not bars_1m or not bars_15m or len(bars_1m) < 5:
+        return
+
+    # Volatility ceiling — post-event hyper-ATR names whip premium ±25%/candle
+    if await _symbol_energy_blocks(client, ticker, bars_1m,
+                                   check_floor=False, check_ceiling=True):
+        return
+
+    # ── PS signal: Stock Trend AND Thesis agree on PUT ───────────────────
+    # Exactly the dashboard's two signals (and SIGNAL_FADE's inverse):
+    #   Trend  — completed-bar 15-min EMA bearish
+    #   Thesis — underlying below session VWAP by more than the exit band
+    trend = ema_direction(completed_bars(bars_15m, 15), settings.ema_period)
+    if trend != "bearish":
+        return
+    vwap = calculate_vwap(session_bars(bars_1m))
+    if vwap <= 0:
+        return
+    last_price = bars_1m[-1].close
+    _band = vwap * max(settings.vwap_exit_band_pct, 0.003)
+    if last_price >= vwap - _band:
+        return  # thesis not bearish (at/above the VWAP band)
+
+    # Momentum confirmation — last completed 1-min bar still pushing down.
+    # Without this, PS would enter mid-bounce (the exact PUT failure mode).
+    if not check_momentum_candle(bars_1m, "PUT", ticker=ticker):
+        return
+
+    # ── Bounce guards (Jul 24 — AMZN #176 + INTC #181, tally reached 2) ──
+    # Both first PS losses entered mid-bounce: trend/thesis were true but
+    # STALE — price had already lifted off the session low behind a green
+    # 5-min candle.  PS must short a FRESH breakdown, not chop:
+    #   1. the last COMPLETED 5-min bar must not be green
+    #   2. price must still be near the session low
+    if settings.put_scalp_no_green_5m_enabled:
+        bars_5m = await _get_bars(client, ticker, interval="5min", lookback_days=1)
+        _b5 = completed_bars(bars_5m, 5)
+        if _b5 and _b5[-1].close > _b5[-1].open:
+            logger.info(
+                "[PS][%s] Blocked — last completed 5-min bar is GREEN "
+                "(%.2f→%.2f): that's a bounce, not a breakdown",
+                ticker, _b5[-1].open, _b5[-1].close,
+            )
+            return
+    if settings.put_scalp_max_bounce_from_low_pct > 0:
+        _lows = [b.low for b in session_bars(bars_1m) if b.low]
+        if _lows:
+            _session_low = min(_lows)
+            if last_price > _session_low * (1 + settings.put_scalp_max_bounce_from_low_pct):
+                logger.info(
+                    "[PS][%s] Blocked — price %.2f is %.2f%% above session low "
+                    "%.2f (max %.2f%%): breakdown is stale / bounce underway",
+                    ticker, last_price, (last_price / _session_low - 1) * 100,
+                    _session_low,
+                    settings.put_scalp_max_bounce_from_low_pct * 100,
+                )
+                return
+
+    logger.info(
+        "[PS][%s] Signal — 15m trend bearish + underlying %.2f below session "
+        "VWAP %.2f (band %.2f) + red momentum bar",
+        ticker, last_price, vwap, _band,
+    )
+
+    # ── Contract selection (same delta/liquidity policy as S1) ───────────
+    expirations = await client.get_option_expirations(ticker)
+    if not expirations:
+        return
+    today_str  = date.today().isoformat()
+    non_0dte   = [e for e in expirations if e > today_str]
+    expiration = non_0dte[0] if non_0dte else expirations[0]
+
+    full_chain = await client.get_options_chain(ticker, expiration)
+    puts = [o for o in full_chain if o.option_type == "put"]
+    if not puts:
+        return
+    eligible = [
+        o for o in puts
+        if (o.volume or 0) >= settings.option_min_volume
+        and o.ask > 0
+        and settings.option_min_delta <= abs(o.delta or 0) <= settings.option_max_delta
+    ]
+    if not eligible:
+        eligible = [
+            o for o in puts
+            if (o.volume or 0) >= settings.option_min_volume and o.ask > 0
+        ]
+    if not eligible:
+        eligible = [o for o in puts if o.ask > 0]
+    if not eligible:
+        return
+    selected = min(eligible, key=lambda o: abs(o.strike - last_price))
+
+    # Contract quality floors — min premium shared; spread gate is PS-OWN
+    # (8% default): a 12% spread would consume the entire 8% target.
+    _sel_mid = selected.mid if (selected.mid and selected.mid > 0) else selected.ask
+    if settings.option_min_premium > 0 and _sel_mid < settings.option_min_premium:
+        logger.info(
+            "[PS][%s] Contract too cheap — mid $%.2f < min premium $%.2f — skipping",
+            ticker, _sel_mid, settings.option_min_premium,
+        )
+        return
+    if not check_option_spread(selected.bid, selected.ask,
+                               settings.put_scalp_max_spread_pct, ticker=ticker):
+        return  # logged inside
+
+    # ── Sizing at the PS stop, half size by default ──────────────────────
+    ask_price = round(selected.ask, 2)
+    mid_price = round(selected.mid, 2) if selected.mid and selected.mid > 0 else ask_price
+    if settings.use_limit_orders and mid_price > 0:
+        order_price, order_type_str = mid_price, "limit"
+    else:
+        order_price, order_type_str = ask_price, "market"
+
+    cost_per_contract = order_price * 100
+    if cost_per_contract <= 0:
+        return
+    budget_qty = int(_s(client, "amount_per_trade") / cost_per_contract)
+    risk_per_contract = cost_per_contract * settings.put_scalp_sl_pct
+    _ps_risk = _s(client, "put_scalp_risk_per_trade")
+    if _ps_risk > 0 and risk_per_contract > 0:
+        qty = min(int(_ps_risk / risk_per_contract), budget_qty)
+    else:
+        qty = budget_qty
+    if qty < 1:
+        logger.info(
+            "[PS][%s] Skipping — 1 contract @ $%.2f exceeds PS risk $%.0f or budget",
+            ticker, order_price, _ps_risk,
+        )
+        return
+
+    # ── Place order (entry lock guards the PS slot against concurrent scans) ─
+    order: object = None
+    async with _entry_lock:
+        ps_recheck = await db.execute(_scope(
+            select(sqlfunc.count(Trade.id)).where(
+                Trade.status == TradeStatus.OPEN,
+                Trade.strategy_name == "put_scalp",
+            ), acct)
+        )
+        if int(ps_recheck.scalar() or 0) >= _s(client, "put_scalp_max_open"):
+            return
+        order = await client.place_option_order(
+            option_symbol=selected.symbol,
+            side="buy_to_open",
+            quantity=qty,
+            order_type=order_type_str,
+            **({"limit_price": order_price} if order_type_str == "limit" else {}),
+        )
+
+    entry_price = await _await_entry_fill(
+        client, ticker, order, order_type_str, order_price, ask_price,
+        selected.symbol, qty,
+    )
+    if entry_price is None:
+        return
+
+    # Fixed PS brackets from the ACTUAL fill
+    _sl = round(entry_price * (1 - settings.put_scalp_sl_pct), 2)
+    _tp = round(entry_price * (1 + settings.put_scalp_tp_pct), 2)
+
+    trade = Trade(
+        symbol=ticker,
+        option_symbol=selected.symbol,
+        direction=Direction.PUT,
+        strategy_name="put_scalp",
+        account_id=_aid(client),
+        tradier_order_id=order.order_id,
+        quantity=qty,
+        remaining_qty=qty,
+        entry_price=entry_price,
+        entry_time=datetime.now(tz=timezone.utc),
+        underlying_entry=last_price,
+        vwap_at_entry=vwap,
+        stop_price=_sl,
+        tp1_price=_tp,
+        tp2_price=_tp,
+        original_stop_price=_sl,
+    )
+    db.add(trade)
+    await db.commit()
+    logger.info(
+        "%s[PS][%s] Trade OPENED: PUT %s x%d @ $%.2f  SL=%.2f (−%.0f%%)  "
+        "TP=%.2f (+%.0f%%)  (premium $%.0f, risk-at-stop $%.0f)",
+        _tag(client), ticker, selected.symbol, qty, entry_price,
+        _sl, settings.put_scalp_sl_pct * 100,
+        _tp, settings.put_scalp_tp_pct * 100,
+        qty * cost_per_contract,
+        qty * (entry_price - _sl) * 100,
+    )
+
+    # Broker disaster stop (same machinery as S1; TP skipped while it rests)
+    if settings.broker_stop_enabled:
+        await _place_broker_stop(db, client, trade)
+    if settings.broker_tp_enabled:
+        if trade.stop_order_id:
+            logger.info(
+                "[PS][%s] Broker TP skipped — resting disaster stop %s already "
+                "reserves the contracts (bot-side TP remains active)",
+                ticker, trade.stop_order_id,
+            )
+        else:
+            await _place_broker_tp(db, client, trade)
+
+
+# ---------------------------------------------------------------------------
 # Entry scanner — Strategy 2 (EMA crossover)
 # ---------------------------------------------------------------------------
 
@@ -1241,6 +1708,7 @@ async def scan_for_entries_s2() -> None:
     Trading window is checked against s2_trading_start_time / s2_last_entry_time.
     S2 uses its own symbol list (strategy="S2" in the symbols table).
     """
+    # Global master switch first — an account toggle can only narrow it.
     if not settings.s2_enabled:
         return
 
@@ -1273,13 +1741,19 @@ async def scan_for_entries_s2() -> None:
         logger.debug("[S2] Past last entry time (%s ET) — no new S2 entries", settings.s2_last_entry_time)
         return
 
-    client = get_tradier_client()
+    await _for_each_account("scan_for_entries_s2", "s2_enabled",
+                            _scan_for_entries_s2_account)
+
+
+async def _scan_for_entries_s2_account(acct: AccountView) -> None:
+    client = get_tradier_client(acct)
+    _t = _tag(client)
 
     async with AsyncSessionLocal() as db:
-        # Daily P&L guard (shared with S1)
-        daily_pnl = await _get_daily_pnl(db)
-        if daily_pnl <= -abs(settings.max_daily_loss):
-            logger.info("[S2] Daily loss limit reached — no new S2 entries today")
+        # Daily P&L guard (shared with S1, scoped to this account)
+        daily_pnl = await _get_daily_pnl(db, acct)
+        if daily_pnl <= -abs(_s(client, "max_daily_loss")):
+            logger.info("%s[S2] Daily loss limit reached — no new S2 entries today", _t)
             return
 
         # Chop-day gate (shared with S1; 60-s cached verdict)
@@ -1289,26 +1763,28 @@ async def scan_for_entries_s2() -> None:
         # S2-specific daily loss circuit breaker
         # Tracks only S2 (ema_cross) realized losses — S1 losses don't count against S2's budget.
         # Set S2_MAX_DAILY_LOSS=0 in .env to disable.
-        if settings.s2_max_daily_loss > 0:
-            s2_pnl = await _get_s2_daily_pnl(db)
-            if s2_pnl <= -abs(settings.s2_max_daily_loss):
+        _s2_max_daily_loss = _s(client, "s2_max_daily_loss")
+        if _s2_max_daily_loss > 0:
+            s2_pnl = await _get_s2_daily_pnl(db, acct)
+            if s2_pnl <= -abs(_s2_max_daily_loss):
                 logger.info(
-                    "[S2] S2 daily loss circuit breaker triggered ($%.2f realized) — "
+                    "%s[S2] S2 daily loss circuit breaker triggered ($%.2f realized) — "
                     "no new S2 entries today",
-                    s2_pnl,
+                    _t, s2_pnl,
                 )
                 return
 
         # S2 max concurrent positions
-        s2_open_result = await db.execute(
+        s2_open_result = await db.execute(_scope(
             select(Trade).where(
                 Trade.status == TradeStatus.OPEN,
                 Trade.strategy_name == "ema_cross",
-            )
+            ), acct)
         )
         s2_open_count = len(s2_open_result.scalars().all())
-        if s2_open_count >= settings.s2_max_open_trades:
-            logger.debug("[S2] Max S2 open trades (%d) reached", settings.s2_max_open_trades)
+        if s2_open_count >= _s(client, "s2_max_open_trades"):
+            logger.debug("%s[S2] Max S2 open trades (%d) reached",
+                         _t, _s(client, "s2_max_open_trades"))
             return
 
         # Active symbols enrolled in S2
@@ -1329,7 +1805,8 @@ async def scan_for_entries_s2() -> None:
                     await _attempt_entry_s2(sym_db, client, ticker)
                 except Exception as exc:
                     logger.error(
-                        "[S2] scan_for_entries_s2 error for %s: %s", ticker, exc, exc_info=True
+                        "%s[S2] scan_for_entries_s2 error for %s: %s",
+                        _t, ticker, exc, exc_info=True,
                     )
 
     await asyncio.gather(*[_scan_s2_one(sym.ticker) for sym in symbols])
@@ -1363,20 +1840,24 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
       Volume   : 1-min underlying volume ≥ 20-bar rolling average
       Spread   : option bid/ask spread ≤ s2_max_spread_pct of the mid price
     """
-    # ── G1: Per-symbol open trade (any strategy) ────────────────────────
+    acct = _acct(client)
+
+    # ── G1: Per-symbol open trade (any strategy, THIS account) ──────────
     # Prevents S2 from entering a symbol that S1 already holds, and vice versa.
     # Mirrors S1's G4 — strategy-agnostic so both strategies respect each other.
-    existing = await db.execute(
+    # Scoped per account: a position held in another account is a separate
+    # book and must not block this one.
+    existing = await db.execute(_scope(
         select(Trade).where(
             Trade.symbol == ticker,
             Trade.status == TradeStatus.OPEN,
-        )
+        ), acct)
     )
-    if existing.scalar_one_or_none():
+    if existing.scalars().first():
         return
 
     # ── G2: S2 cooldown ─────────────────────────────────────────────────
-    recent_exit = await _get_s2_recent_bad_exit(db, ticker)
+    recent_exit = await _get_s2_recent_bad_exit(db, ticker, acct)
     if recent_exit:
         logger.info(
             "[S2][%s] Cooldown active — last %s exit at %s (%d-min window)",
@@ -1395,12 +1876,12 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
         tzinfo=timezone.utc
     )
     if settings.s2_max_trades_per_day > 0:
-        count_result = await db.execute(
+        count_result = await db.execute(_scope(
             select(sqlfunc.count(Trade.id)).where(
                 Trade.symbol == ticker,
                 Trade.strategy_name == "ema_cross",
                 Trade.entry_time >= today_start,
-            )
+            ), acct)
         )
         today_count = count_result.scalar() or 0
         if today_count >= settings.s2_max_trades_per_day:
@@ -1623,10 +2104,12 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
             )
 
     risk_frac = struct.risk_pct if struct else settings.s2_stop_loss_pct
-    budget_qty = int(settings.s2_amount_per_trade / cost_per_contract)
-    if settings.s2_risk_per_trade > 0 and risk_frac > 0:
+    _s2_amount = _s(client, "s2_amount_per_trade")
+    _s2_risk   = _s(client, "s2_risk_per_trade")
+    budget_qty = int(_s2_amount / cost_per_contract)
+    if _s2_risk > 0 and risk_frac > 0:
         risk_per_contract = cost_per_contract * risk_frac
-        risk_qty = int(settings.s2_risk_per_trade / risk_per_contract)
+        risk_qty = int(_s2_risk / risk_per_contract)
         qty = min(risk_qty, budget_qty)
     else:
         qty = budget_qty
@@ -1635,7 +2118,7 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
         logger.info(
             "[S2][%s] Skipping — 1 contract @ $%.2f exceeds S2 size limits "
             "(budget $%.0f, risk $%.0f)",
-            ticker, order_price, settings.s2_amount_per_trade, settings.s2_risk_per_trade,
+            ticker, order_price, _s2_amount, _s2_risk,
         )
         return
 
@@ -1649,7 +2132,7 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
     # Unprofitable exits (STOP, EMA_CROSS, or TRAILING_STOP below entry) are
     # excluded — price may have reset and the new setup is legitimate.
     if settings.s2_tp_chase_pct > 0:
-        s2_chase_trade = await _get_s2_tp_exit_for_chase_check(db, ticker)
+        s2_chase_trade = await _get_s2_tp_exit_for_chase_check(db, ticker, acct)
         if (
             s2_chase_trade
             and s2_chase_trade.direction.value == direction
@@ -1670,14 +2153,15 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
     order: object = None
     async with _entry_lock:
         # Re-check S2 cap inside lock
-        s2_recheck = await db.execute(
+        s2_recheck = await db.execute(_scope(
             select(sqlfunc.count(Trade.id)).where(
                 Trade.status == TradeStatus.OPEN,
                 Trade.strategy_name == "ema_cross",
-            )
+            ), acct)
         )
-        if int(s2_recheck.scalar() or 0) >= settings.s2_max_open_trades:
-            logger.debug("[S2][%s] S2 cap reached (re-check inside lock) — skipping", ticker)
+        if int(s2_recheck.scalar() or 0) >= _s(client, "s2_max_open_trades"):
+            logger.debug("%s[S2][%s] S2 cap reached (re-check inside lock) — skipping",
+                         _tag(client), ticker)
             return
 
         if order_type_str == "limit":
@@ -1770,6 +2254,7 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
         option_symbol=selected.symbol,
         direction=direction,
         strategy_name="ema_cross",
+        account_id=_aid(client),
         tradier_order_id=order.order_id,
         quantity=qty,
         remaining_qty=qty,
@@ -1785,8 +2270,9 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
     await db.commit()
     _tp_str = (f"  TP={tp2_price:.2f}" if tp2_price else "  TP=signal exit only")
     logger.info(
-        "[S2][%s] Trade OPENED: %s %s x%d @ $%.2f  SL=%.2f%s",
-        ticker, direction, selected.symbol, qty, entry_price, stop_price, _tp_str,
+        "%s[S2][%s] Trade OPENED: %s %s x%d @ $%.2f  SL=%.2f%s",
+        _tag(client), ticker, direction, selected.symbol, qty, entry_price,
+        stop_price, _tp_str,
     )
 
 
@@ -1879,15 +2365,42 @@ async def _place_broker_stop(db, client, trade: Trade) -> None:
 # ---------------------------------------------------------------------------
 
 async def manage_open_trades() -> None:
+    """
+    Exit management — runs once per account, over that account's OPEN trades.
+
+    Uses ALL accounts, not just enabled ones: disabling an account stops NEW
+    entries, but an already-open position must still be managed to its exit.
+    Abandoning a live position because someone unticked a checkbox would be
+    the worst possible failure mode in this system.
+    """
     if not is_market_open():
         return
 
-    client = get_tradier_client()
+    try:
+        accounts = await all_account_views()
+    except Exception as exc:
+        logger.error("manage_open_trades: could not load accounts: %s", exc,
+                     exc_info=True)
+        return
+
+    for acct in accounts:
+        try:
+            await _manage_open_trades_account(acct)
+        except Exception as exc:
+            logger.error(
+                "manage_open_trades failed for account '%s': %s — OPEN POSITIONS "
+                "IN THIS ACCOUNT WERE NOT MANAGED THIS TICK",
+                acct.name, exc, exc_info=True,
+            )
+
+
+async def _manage_open_trades_account(acct: AccountView) -> None:
+    client = get_tradier_client(acct)
     cutoff = is_past_cutoff()
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Trade).where(Trade.status == TradeStatus.OPEN)
+        result = await db.execute(_scope(
+            select(Trade).where(Trade.status == TradeStatus.OPEN), acct)
         )
         trades = result.scalars().all()
 
@@ -1944,8 +2457,26 @@ async def manage_open_trades() -> None:
                 if not opt_q:
                     continue
                 bid, ask, last = opt_q.bid, opt_q.ask, opt_q.last
-                bid_price = bid if bid and bid > 0 else last
-                mid_price = (bid + ask) / 2 if (bid and ask and bid > 0 and ask > 0) else last
+                # ── Two-sided quote required (Jul 27 2026 WMT #195 / ORCL #197) ──
+                # This used to fall back to `last` when a side was missing.
+                # `last` is the most recent TRADE print — on a thin option it
+                # can be minutes stale and far from the market.  During a
+                # Tradier feed wobble that stale number fired two exits at
+                # prices the market was not offering: WMT triggered on $1.00
+                # and filled $1.14 (+14%), ORCL triggered on $3.65 and filled
+                # $4.18 (+14.5%), neither anywhere near its stop.  A one-sided
+                # or missing quote is not a price — wait for the next tick.
+                # Delayed exits during a feed outage are precisely what the
+                # broker disaster stop is there to cover.
+                if not (bid and bid > 0 and ask and ask > 0):
+                    logger.warning(
+                        "[%s] Trade %d: degraded option quote (bid=%s ask=%s "
+                        "last=%s) — skipping exit checks this tick",
+                        trade.symbol, trade.id, bid, ask, last,
+                    )
+                    continue
+                bid_price = bid
+                mid_price = (bid + ask) / 2
                 if not bid_price or not mid_price:
                     continue  # no valid price — skip this tick
 
@@ -1955,16 +2486,37 @@ async def manage_open_trades() -> None:
                 # trade direction, waive the fixed TP and let the runner trail
                 # manage the exit.  If momentum has faded, the TP fires
                 # normally on a later tick.
+                # PUT-scalp trades use their own (tighter) runner params:
+                # arm at +arm_pct GAIN over entry (not TP proximity), trail
+                # and floor from the PS settings.
+                _is_ps = trade.strategy_name == "put_scalp"
+                _r_trail = (settings.put_scalp_runner_trail_pct if _is_ps
+                            else settings.runner_trail_pct)
+                _r_floor_lock = (settings.put_scalp_runner_floor_lock_pct if _is_ps
+                                 else settings.runner_floor_lock_pct)
+                if _is_ps:
+                    _runner_zone = (
+                        trade.entry_price > 0
+                        and bid_price >= trade.entry_price
+                        * (1 + settings.put_scalp_runner_arm_pct)
+                    )
+                else:
+                    _runner_zone = bool(trade.tp2_price) and bid_price >= (
+                        trade.tp2_price * (1 - settings.runner_proximity_pct)
+                    )
                 if (
                     settings.runner_mode_enabled
                     and not trade.runner_mode
                     and not trade.tp_manual      # never waive a HUMAN-set target
                     and trade.tp2_price
-                    and bid_price >= trade.tp2_price * (1 - settings.runner_proximity_pct)
+                    and _runner_zone
                 ):
                     r_bars = await _get_bars(client, trade.symbol, interval="1min", lookback_days=1)
                     if r_bars and should_activate_runner(
-                        bid_price, trade.tp2_price, r_bars, trade.direction.value
+                        bid_price, trade.tp2_price, r_bars, trade.direction.value,
+                        # PS is already in the zone by gain — pass a proximity
+                        # that cannot re-block (1.0 = any price qualifies).
+                        proximity_pct=1.0 if _is_ps else None,
                     ):
                         trade.runner_mode = True
                         trade.tp1_price = trade.tp2_price   # keep original target for reference
@@ -1974,17 +2526,17 @@ async def manage_open_trades() -> None:
                         # there can sit below entry — converting a winner into
                         # a loser (GOOGL #140 exited −3% via its own runner).
                         runner_floor = max(
-                            round(mid_price * (1 - settings.runner_trail_pct), 2),
-                            round(trade.entry_price * (1 + settings.runner_floor_lock_pct), 2),
+                            round(mid_price * (1 - _r_trail), 2),
+                            round(trade.entry_price * (1 + _r_floor_lock), 2),
                         )
                         if trade.stop_price is None or runner_floor > trade.stop_price:
                             trade.stop_price = runner_floor
                         await db.commit()
                         logger.info(
-                            "[%s] RUNNER mode activated — TP $%.2f waived on momentum, "
+                            "[%s]%s RUNNER mode activated — TP $%.2f waived on momentum, "
                             "trailing %.0f%% below mid (stop now $%.2f)",
-                            trade.symbol, trade.tp1_price,
-                            settings.runner_trail_pct * 100, trade.stop_price,
+                            trade.symbol, " [PS]" if _is_ps else "", trade.tp1_price,
+                            _r_trail * 100, trade.stop_price,
                         )
                         # Cancel the broker-side resting TP — it would still
                         # fill at the old target otherwise.
@@ -2030,7 +2582,7 @@ async def manage_open_trades() -> None:
                     # current mid — tighter/faster than the standard trail and
                     # active regardless of the standard trail's gain threshold.
                     if trade.runner_mode:
-                        runner_floor = round(mid_price * (1 - settings.runner_trail_pct), 2)
+                        runner_floor = round(mid_price * (1 - _r_trail), 2)
                         new_stop = max(new_stop, runner_floor)
                     if new_stop != trade.stop_price:
                         gain_pct = (
@@ -2072,13 +2624,55 @@ async def manage_open_trades() -> None:
                 # Current underlying price (needed for VWAP_BREAK check).
                 underlying_q = await client.get_quote(trade.symbol)
 
-                # VWAP_BREAK band exit is disabled under structural levels:
-                # the 0.3% band sits INSIDE normal underlying noise, so an
-                # ordinary VWAP retest was killing valid trades.  The
-                # structural stop (anchored below pullback-low/VWAP) replaces
-                # it at a level derived from chart structure instead.
+                # ── Signal-conflict exit (SIGNAL_FADE, Jul 23) ──────────────
+                # Both dashboard signals must oppose the trade:
+                #   Stock Trend — completed-bar 15-min EMA trend flipped
+                #   Thesis      — underlying beyond the exit band on the
+                #                 wrong side of the SESSION VWAP
+                # Requiring both (and bar-close trend) is the noise guard.
+                if settings.signal_conflict_exit_enabled and underlying_q.last:
+                    c15 = await _get_bars(client, trade.symbol, interval="15min",
+                                          lookback_days=settings.trend_lookback_days)
+                    c1  = await _get_bars(client, trade.symbol, interval="1min",
+                                          lookback_days=1)
+                    if c15 and c1:
+                        _t = ema_direction(completed_bars(c15, 15), settings.ema_period)
+                        _dirv = trade.direction.value
+                        trend_conflict = (
+                            (_dirv == "CALL" and _t == "bearish")
+                            or (_dirv == "PUT" and _t == "bullish")
+                        )
+                        thesis_broken = False
+                        _sv = calculate_vwap(session_bars(c1))
+                        if _sv > 0:
+                            _band = _sv * max(settings.vwap_exit_band_pct, 0.003)
+                            if _dirv == "CALL":
+                                thesis_broken = underlying_q.last < _sv - _band
+                            else:
+                                thesis_broken = underlying_q.last > _sv + _band
+                        if trend_conflict and thesis_broken:
+                            if trade.signal_conflict_time is None:
+                                trade.signal_conflict_time = datetime.now(tz=timezone.utc)
+                                await db.commit()
+                            logger.info(
+                                "[%s] SIGNAL_FADE — trend=%s against %s AND thesis "
+                                "broken (underlying %.2f vs session VWAP %.2f) — "
+                                "exiting via marketable limit",
+                                trade.symbol, _t, _dirv, underlying_q.last, _sv,
+                            )
+                            await _close_trade(
+                                db, client, trade, ExitReason.SIGNAL_FADE, bid_price
+                            )
+                            continue
+
+                # VWAP_BREAK band exit stays disabled whenever the disable
+                # flag is set — REGARDLESS of structural levels (Jul 23:
+                # fixed 21/17 levels turned structural off; the old coupling
+                # would have silently resurrected the 0.3% noise exit).
+                # SIGNAL_FADE (session-VWAP + trend, both required) is its
+                # principled replacement.
                 _vwap_for_exit = trade.vwap_at_entry or 0
-                if settings.structural_levels_enabled and settings.struct_disable_vwap_break:
+                if settings.struct_disable_vwap_break:
                     _vwap_for_exit = 0
 
                 exit_cond = check_exit_conditions(
@@ -2095,6 +2689,11 @@ async def manage_open_trades() -> None:
                     remaining_qty=trade.remaining_qty or trade.quantity,
                     entry_time=trade.entry_time,
                     original_stop=trade.original_stop_price,
+                    # PS: stop suppressed for its own hold window (6 min).
+                    # Quick-loss + the broker disaster stop remain active.
+                    stop_min_hold_minutes=(
+                        settings.put_scalp_stop_min_hold_minutes if _is_ps else None
+                    ),
                 )
 
                 if not exit_cond:
@@ -2152,8 +2751,17 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
         return
 
     bid, ask, last = opt_q.bid, opt_q.ask, opt_q.last
-    bid_price = bid if bid and bid > 0 else last
-    mid_price = (bid + ask) / 2 if (bid and ask and bid > 0 and ask > 0) else last
+    # Two-sided quote required — see the note in manage_open_trades.  ORCL
+    # #197 (S2) quick-lossed on a $3.65 trigger and filled $4.18.
+    if not (bid and bid > 0 and ask and ask > 0):
+        logger.warning(
+            "[S2][%s] Trade %d: degraded option quote (bid=%s ask=%s last=%s) "
+            "— skipping exit checks this tick",
+            trade.symbol, trade.id, bid, ask, last,
+        )
+        return
+    bid_price = bid
+    mid_price = (bid + ask) / 2
     if not bid_price or not mid_price:
         return
 
@@ -2218,6 +2826,25 @@ async def _manage_s2_trade(db, client, trade: Trade, cutoff: bool) -> None:
     if not bars_5m:
         logger.warning("[S2][%s] Trade %d: no 5-min bars — skipping exit check", trade.symbol, trade.id)
         return
+
+    # 4a. Signal-conflict exit (SIGNAL_FADE, Jul 23): the 5-min trend filter
+    #     now fully validates the OPPOSITE direction (EMA9/21 crossed against
+    #     us + close on the wrong side of VWAP + both slopes against) — the
+    #     dashboard's Stock Trend and Thesis both conflict.  Exit via the
+    #     marketable-limit urgent path.
+    if settings.signal_conflict_exit_enabled:
+        _opp = "PUT" if trade.direction.value == "CALL" else "CALL"
+        if check_5min_trend_filter(bars_5m, _opp, ticker=trade.symbol):
+            if trade.signal_conflict_time is None:
+                trade.signal_conflict_time = datetime.now(tz=timezone.utc)
+                await db.commit()
+            logger.info(
+                "[S2][%s] SIGNAL_FADE — 5-min trend fully validated %s against "
+                "open %s — exiting via marketable limit",
+                trade.symbol, _opp, trade.direction.value,
+            )
+            await _close_trade(db, client, trade, ExitReason.SIGNAL_FADE, bid_price)
+            return
 
     # 4b. Structure exit inputs: 1-min bars + current 5-min EMA9.
     #     The entry thesis is "price bounced off the 5-min EMA9" — the exit
@@ -2566,6 +3193,7 @@ _URGENT_EXIT_REASONS = {
     ExitReason.STOP,
     ExitReason.QUICK_LOSS,
     ExitReason.VWAP_BREAK,
+    ExitReason.SIGNAL_FADE,
 }
 
 
@@ -2590,7 +3218,11 @@ async def _execute_exit_sell(db, client, trade: Trade, qty: int, reason: ExitRea
            • partially filled → book the filled slice into trade.pnl /
                                 remaining_qty, market-sell the remainder
            • unfilled         → market-sell the full quantity
-    URGENT exits (STOP / QUICK_LOSS / VWAP_BREAK) skip straight to market.
+    URGENT exits (STOP / QUICK_LOSS / VWAP_BREAK / SIGNAL_FADE) use a
+    MARKETABLE limit at bid × (1 − urgent_exit_limit_pct): fills like a
+    market order in normal tape but caps the worst fill 3% below bid — raw
+    market sells on fast moves paid full spread-at-velocity (CRM/COIN ~$36
+    extra each).  Short 6 s timeout, then true market.
     """
     async def _market(q: int):
         return await client.place_option_order(
@@ -2600,11 +3232,28 @@ async def _execute_exit_sell(db, client, trade: Trade, qty: int, reason: ExitRea
             order_type="market",
         )
 
-    use_limit = (
-        settings.exit_limit_orders_enabled
-        and reason not in _URGENT_EXIT_REASONS
+    urgent = reason in _URGENT_EXIT_REASONS
+
+    # ── Choose limit price + timeout by urgency ──────────────────────────
+    limit_price: float | None = None
+    timeout = settings.exit_limit_timeout_seconds
+    want_limit = (
+        (urgent and settings.urgent_exit_limit_enabled)
+        or (not urgent and settings.exit_limit_orders_enabled)
     )
-    if not use_limit:
+    if want_limit:
+        try:
+            q = await client.get_option_quote(trade.option_symbol)
+            if q and q.bid and q.ask and q.bid > 0 and q.ask > 0:
+                if urgent:
+                    limit_price = round(q.bid * (1 - settings.urgent_exit_limit_pct), 2)
+                    timeout = settings.urgent_exit_limit_timeout_seconds
+                else:
+                    limit_price = round((q.bid + q.ask) / 2, 2)
+        except Exception:
+            limit_price = None
+
+    if not limit_price or limit_price <= 0:
         try:
             return _ExitSellResult(order=await _market(qty))
         except Exception as exc:
@@ -2614,32 +3263,14 @@ async def _execute_exit_sell(db, client, trade: Trade, qty: int, reason: ExitRea
             )
             return _ExitSellResult(failed=True)
 
-    # ── Fresh quote for the mid ──────────────────────────────────────────
-    mid: float | None = None
-    try:
-        q = await client.get_option_quote(trade.option_symbol)
-        if q and q.bid and q.ask and q.bid > 0 and q.ask > 0:
-            mid = round((q.bid + q.ask) / 2, 2)
-    except Exception:
-        mid = None
-    if not mid or mid <= 0:
-        try:
-            return _ExitSellResult(order=await _market(qty))
-        except Exception as exc:
-            logger.error(
-                "[%s] Trade %d: market sell_to_close failed — leaving OPEN to retry. %s",
-                trade.symbol, trade.id, exc,
-            )
-            return _ExitSellResult(failed=True)
-
-    # ── Limit at mid ─────────────────────────────────────────────────────
+    # ── Limit (mid for patient, marketable bid−3% for urgent) ────────────
     try:
         limit_order = await client.place_option_order(
             option_symbol=trade.option_symbol,
             side="sell_to_close",
             quantity=qty,
             order_type="limit",
-            limit_price=mid,
+            limit_price=limit_price,
         )
     except Exception as exc:
         logger.warning(
@@ -2656,13 +3287,13 @@ async def _execute_exit_sell(db, client, trade: Trade, qty: int, reason: ExitRea
             return _ExitSellResult(failed=True)
 
     logger.info(
-        "[%s] Trade %d: exit limit placed at mid $%.2f (%s) — waiting up to %ds",
-        trade.symbol, trade.id, mid, reason.value, settings.exit_limit_timeout_seconds,
+        "[%s] Trade %d: exit limit placed at $%.2f (%s, %s) — waiting up to %ds",
+        trade.symbol, trade.id, limit_price, reason.value,
+        "marketable bid−%.0f%%" % (settings.urgent_exit_limit_pct * 100) if urgent else "mid",
+        timeout,
     )
 
-    deadline = datetime.now(tz=timezone.utc) + timedelta(
-        seconds=settings.exit_limit_timeout_seconds
-    )
+    deadline = datetime.now(tz=timezone.utc) + timedelta(seconds=timeout)
     status_str = "unknown"
     while datetime.now(tz=timezone.utc) < deadline:
         await asyncio.sleep(2)
@@ -2673,10 +3304,10 @@ async def _execute_exit_sell(db, client, trade: Trade, qty: int, reason: ExitRea
             status_str = "unknown"
         if status_str == "filled":
             logger.info(
-                "[%s] Trade %d: exit limit %s filled at mid — half-spread saved",
+                "[%s] Trade %d: exit limit %s filled",
                 trade.symbol, trade.id, limit_order.order_id,
             )
-            return _ExitSellResult(order=limit_order, was_limit=True)
+            return _ExitSellResult(order=limit_order, was_limit=not urgent)
         if status_str in ("rejected", "canceled", "cancelled"):
             break
 
@@ -2698,7 +3329,7 @@ async def _execute_exit_sell(db, client, trade: Trade, qty: int, reason: ExitRea
 
     if status_str == "filled":
         # Fill won the race against the cancel
-        return _ExitSellResult(order=limit_order, was_limit=True)
+        return _ExitSellResult(order=limit_order, was_limit=not urgent)
 
     if exec_qty > 0 and avg_fill > 0:
         # Partial fill — book the filled slice now so a retry can never
@@ -2989,11 +3620,18 @@ async def cancel_stale_entry_orders() -> None:
     buy at startup is by definition stale.  Sell orders (disaster stops for
     adopted/open trades) are left untouched.
     """
-    client = get_tradier_client()
+    for acct in await all_account_views():
+        await _cancel_stale_entry_orders_account(acct)
+
+
+async def _cancel_stale_entry_orders_account(acct: AccountView) -> None:
+    client = get_tradier_client(acct)
+    _t = _tag(client)
     try:
         pending = await client.get_open_orders()
     except Exception as exc:
-        logger.warning("[startup] Entry-order sweep: could not list orders: %s", exc)
+        logger.warning("%s[startup] Entry-order sweep: could not list orders: %s",
+                       _t, exc)
         return
     for o in pending:
         side = (o.get("side") or "").lower()
@@ -3005,16 +3643,16 @@ async def cancel_stale_entry_orders() -> None:
         try:
             await client.cancel_order(oid)
             logger.warning(
-                "[startup] Cancelled STALE resting buy order %s (%s %s x%s) — "
+                "%s[startup] Cancelled STALE resting buy order %s (%s %s x%s) — "
                 "orphaned entry orders must never survive into a session",
-                oid, o.get("option_symbol") or o.get("symbol", "?"),
+                _t, oid, o.get("option_symbol") or o.get("symbol", "?"),
                 side, o.get("quantity", "?"),
             )
         except Exception as exc:
             logger.error(
-                "[startup] Could not cancel stale buy order %s: %s — "
+                "%s[startup] Could not cancel stale buy order %s: %s — "
                 "CHECK TRADIER MANUALLY",
-                oid, exc,
+                _t, oid, exc,
             )
 
 
@@ -3028,6 +3666,17 @@ async def close_orphaned_open_trades() -> None:
     Fires once immediately when the scheduler starts.  Safe to run multiple
     times: trades already CLOSED are skipped.
     """
+    for acct in await all_account_views():
+        try:
+            await _close_orphaned_open_trades_account(acct)
+        except Exception as exc:
+            logger.error(
+                "[startup] Orphan close failed for account '%s': %s",
+                acct.name, exc, exc_info=True,
+            )
+
+
+async def _close_orphaned_open_trades_account(acct: AccountView) -> None:
     from zoneinfo import ZoneInfo
     ET = ZoneInfo("America/New_York")
     now_et = datetime.now(tz=ET)
@@ -3035,7 +3684,8 @@ async def close_orphaned_open_trades() -> None:
     cutoff_m = settings.cutoff_minute
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Trade).where(Trade.status == TradeStatus.OPEN))
+        result = await db.execute(_scope(
+            select(Trade).where(Trade.status == TradeStatus.OPEN), acct))
         open_trades = result.scalars().all()
 
     # S3 stock trades are never closed via the option sell path — the S3
@@ -3062,12 +3712,12 @@ async def close_orphaned_open_trades() -> None:
         )
         return
 
+    client = get_tradier_client(acct)
     logger.warning(
-        "[startup] %d orphaned open trade(s) found past cutoff / market closed — "
+        "%s[startup] %d orphaned open trade(s) found past cutoff / market closed — "
         "force-closing now",
-        len(open_trades),
+        _tag(client), len(open_trades),
     )
-    client = get_tradier_client()
     async with AsyncSessionLocal() as db:
         for trade in open_trades:
             # Re-fetch inside session
@@ -3092,6 +3742,57 @@ async def close_orphaned_open_trades() -> None:
 # Scheduler setup
 # ---------------------------------------------------------------------------
 
+async def _startup_tasks() -> None:
+    """
+    Run every one-shot startup task in order, isolating failures.
+
+    Order matters: cancel stale resting BUY orders BEFORE closing orphans, so
+    a stale entry cannot fill into a position we are in the middle of
+    flattening.
+    """
+    for name, job in (
+        ("account roster",     _log_account_roster),
+        ("stale-order sweep",  cancel_stale_entry_orders),
+        ("orphan close",       close_orphaned_open_trades),
+    ):
+        try:
+            await job()
+        except Exception as exc:
+            logger.error("[startup] %s failed: %s", name, exc, exc_info=True)
+
+
+async def _log_account_roster() -> None:
+    """Print one startup line per account: mode, strategies, sizing, slots."""
+    try:
+        accounts = await all_account_views()
+    except Exception as exc:
+        logger.warning("[accounts] Could not list accounts at startup: %s", exc)
+        return
+    for a in accounts:
+        strategies = [
+            name for name, on in (
+                ("S1", a.s1_enabled and True),
+                ("S2", a.s2_enabled and settings.s2_enabled),
+                ("PS", a.put_scalp_enabled and settings.put_scalp_enabled),
+                ("S3", a.s3_enabled and settings.s3_enabled),
+            ) if on
+        ]
+        logger.info(
+            "[accounts] %-14s %-7s acct=%-10s %-4s → %s | risk S1 $%.0f / S2 $%.0f | "
+            "slots S1 %d / S2 %d / PS %d",
+            a.name,
+            "ENABLED" if a.enabled else "PAUSED",
+            a.account_number or "?",
+            "SBOX" if a.use_sandbox else "LIVE",
+            ", ".join(strategies) or "none",
+            float(a.setting("risk_per_trade")),
+            float(a.setting("s2_risk_per_trade")),
+            int(a.setting("max_open_trades")),
+            int(a.setting("s2_max_open_trades")),
+            int(a.setting("put_scalp_max_open")),
+        )
+
+
 def start_scheduler() -> None:
     if not settings.scheduler_enabled:
         logger.info("Scheduler disabled via config")
@@ -3101,7 +3802,7 @@ def start_scheduler() -> None:
     # (Old version always printed the sandbox URL string regardless of the
     # flag — caused a false alarm during the Jul 20 ghost-trade incident.)
     logger.info(
-        "Tradier: market data → %s | orders → %s [%s] (account %s)",
+        "Tradier: market data → %s | .env orders → %s [%s] (account %s)",
         settings.tradier_base_url,
         settings.tradier_base_url_sandbox if settings.use_sandbox
         else settings.tradier_base_url,
@@ -3120,27 +3821,31 @@ def start_scheduler() -> None:
         seconds=settings.s2_scan_interval_seconds,
         id="scan_entries_s2", replace_existing=True,
     )
+    # PUT Scalp scanner (Jul 23 2026) — no-ops unless PUT_SCALP_ENABLED.
+    # Reuses the S1 scan cadence; the function itself guards calendar+clock.
+    scheduler.add_job(
+        scan_for_put_scalp, "interval",
+        seconds=settings.scan_interval_seconds,
+        id="scan_put_scalp", replace_existing=True,
+    )
     scheduler.add_job(
         manage_open_trades, "interval",
         seconds=settings.manage_interval_seconds,
         id="manage_trades", replace_existing=True,
     )
-    # One-shot startup job: close any open trades that survived past the
-    # force-close window (bot was stopped before 15:16 ET cutoff job ran).
+    # ── One-shot startup work, run SEQUENTIALLY in a single job ──────────
+    # These used to be two independent "date" jobs.  With multi-account each
+    # of them now iterates every account (DB reads + a Tradier round-trip per
+    # account), and running them concurrently made them contend with each
+    # other — and with the first scan tick — over the same SQLite file.
+    # Boot-time work has no reason to be parallel, so it is one job now:
+    #   1. log the account roster
+    #   2. cancel stale resting BUY orders (Jul 20 ghost-trade lesson)
+    #   3. force-close trades left open past the cutoff
     scheduler.add_job(
-        close_orphaned_open_trades, "date",
+        _startup_tasks, "date",
         run_date=datetime.now(tz=scheduler.timezone),
-        id="startup_orphan_close", replace_existing=True,
-    )
-    # One-shot startup sweep: cancel any resting BUY orders at the broker.
-    # Jul 20 post-mortem: Saturday-placed entry limits survived the weekend
-    # and filled at Monday's open as "ghost trades".  Whatever their origin
-    # (failed cancels, kill mid-poll), no orphaned entry order may ever
-    # survive into a session again.
-    scheduler.add_job(
-        cancel_stale_entry_orders, "date",
-        run_date=datetime.now(tz=scheduler.timezone),
-        id="startup_entry_order_sweep", replace_existing=True,
+        id="startup_tasks", replace_existing=True,
     )
     scheduler.start()
     logger.info(

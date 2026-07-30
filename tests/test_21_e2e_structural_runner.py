@@ -219,6 +219,9 @@ def _manage_env(Session, client, bars_1m):
          patch.object(settings, "runner_mode_enabled", True), \
          patch.object(settings, "runner_proximity_pct", 0.05), \
          patch.object(settings, "runner_trail_pct", 0.08), \
+         patch.object(settings, "runner_floor_lock_pct", 0.03), \
+         patch.object(settings, "signal_conflict_exit_enabled", False), \
+         patch.object(settings, "urgent_exit_limit_enabled", False), \
          patch.object(settings, "structural_levels_enabled", True), \
          patch.object(settings, "struct_disable_vwap_break", True), \
          patch.object(settings, "stop_loss_pct", 0.19), \
@@ -668,15 +671,17 @@ async def test_patient_exit_sells_via_limit_at_mid(db_env):
 
 
 @pytest.mark.asyncio
-async def test_urgent_stop_exit_sells_via_market(db_env):
-    """STOP (urgent) exit must go straight to market even with limits enabled."""
+async def test_urgent_stop_exit_sells_via_market_when_marketable_disabled(db_env):
+    """With the marketable-limit feature off, urgent exits go straight to market."""
     db, Session = db_env
     trade = _mk_trade(stop=1.62, tp2=2.50)           # 1.62 = original stop (−19%)
     db.add(trade); await db.commit()
 
     client = _client(opt_bid=1.55, opt_ask=1.65, fill=1.55)   # mid 1.60 ≤ stop
     with _manage_env(Session, client, rising_bars(150.0, 10, 0.05)), \
-         patch.object(settings, "exit_limit_orders_enabled", True):
+         patch.object(settings, "exit_limit_orders_enabled", True), \
+         patch.object(settings, "urgent_exit_limit_enabled", False), \
+         patch.object(settings, "signal_conflict_exit_enabled", False):
         await manage_open_trades()
 
     await db.refresh(trade)
@@ -684,6 +689,90 @@ async def test_urgent_stop_exit_sells_via_market(db_env):
     assert trade.exit_reason == ExitReason.STOP
     sell_kwargs = client.place_option_order.call_args.kwargs
     assert sell_kwargs["order_type"] == "market"
+
+
+@pytest.mark.asyncio
+async def test_urgent_stop_uses_marketable_limit_at_bid_minus_3pct(db_env):
+    """Jul 23: urgent exits place a limit at bid × 0.97 — caps velocity slippage."""
+    db, Session = db_env
+    trade = _mk_trade(stop=1.62, tp2=2.50)
+    db.add(trade); await db.commit()
+
+    client = _client(opt_bid=1.55, opt_ask=1.65, fill=1.52)
+    with _manage_env(Session, client, rising_bars(150.0, 10, 0.05)), \
+         patch.object(settings, "urgent_exit_limit_enabled", True), \
+         patch.object(settings, "urgent_exit_limit_pct", 0.03), \
+         patch.object(settings, "urgent_exit_limit_timeout_seconds", 4), \
+         patch.object(settings, "signal_conflict_exit_enabled", False):
+        await manage_open_trades()
+
+    await db.refresh(trade)
+    assert trade.status == TradeStatus.CLOSED
+    assert trade.exit_reason == ExitReason.STOP
+    sell_kwargs = client.place_option_order.call_args.kwargs
+    assert sell_kwargs["order_type"] == "limit"
+    assert sell_kwargs["limit_price"] == pytest.approx(round(1.55 * 0.97, 2))
+
+
+@pytest.mark.asyncio
+async def test_s1_signal_fade_exit_when_trend_and_thesis_flip(db_env):
+    """CALL held while 15-min trend turns bearish AND underlying sits below
+    session VWAP beyond the band → SIGNAL_FADE via marketable limit,
+    conflict timestamp stored."""
+    db, Session = db_env
+    trade = _mk_trade(stop=1.00, tp2=None)           # nothing else can fire
+    db.add(trade); await db.commit()
+
+    async def fake_get_bars(_c, ticker, interval, lookback_days):
+        if interval == "15min":
+            return falling_bars(160.0, 40, 0.3)      # bearish completed trend
+        return rising_bars(152.0, 30, 0.01)          # session VWAP ≈ 152 » last 150.0
+
+    client = _client(opt_bid=2.10, opt_ask=2.20, fill=2.05)
+    with patch("app.services.scheduler.is_market_open", return_value=True), \
+         patch("app.services.scheduler.is_past_cutoff", return_value=False), \
+         patch("app.services.scheduler.get_tradier_client", return_value=client), \
+         patch("app.services.scheduler.AsyncSessionLocal", Session), \
+         patch("app.services.scheduler._get_bars", side_effect=fake_get_bars), \
+         patch.object(settings, "broker_stop_enabled", False), \
+         patch.object(settings, "broker_tp_enabled", False), \
+         patch.object(settings, "runner_mode_enabled", False), \
+         patch.object(settings, "signal_conflict_exit_enabled", True), \
+         patch.object(settings, "urgent_exit_limit_enabled", True), \
+         patch.object(settings, "urgent_exit_limit_timeout_seconds", 4), \
+         patch.object(settings, "struct_disable_vwap_break", True), \
+         patch.object(settings, "quick_loss_pct", 0.0):
+        await manage_open_trades()
+
+    await db.refresh(trade)
+    assert trade.status == TradeStatus.CLOSED
+    assert trade.exit_reason == ExitReason.SIGNAL_FADE
+    assert trade.signal_conflict_time is not None
+
+
+@pytest.mark.asyncio
+async def test_s2_signal_fade_when_opposite_trend_validates(db_env):
+    """S2 CALL while the 5-min filter fully validates PUT → SIGNAL_FADE."""
+    db, _ = db_env
+    trade = _mk_trade(strategy="ema_cross", stop=1.00, tp2=None, symbol="ZZFADE")
+    db.add(trade); await db.commit()
+
+    bars_5m = falling_bars(155.0, 40, 0.3)           # PUT-valid: falling, below VWAP
+    bars_1m = falling_bars(150.0, 10, 0.05)
+    client = _client(opt_bid=2.10, opt_ask=2.20, fill=2.05)
+    with patch("app.services.scheduler._get_bars",
+               side_effect=lambda _c, t, interval, lookback_days:
+               bars_5m if interval == "5min" else bars_1m), \
+         patch.object(settings, "signal_conflict_exit_enabled", True), \
+         patch.object(settings, "urgent_exit_limit_enabled", True), \
+         patch.object(settings, "urgent_exit_limit_timeout_seconds", 4), \
+         patch.object(settings, "s2_quick_loss_pct", 0.0):
+        await _manage_s2_trade(db, client, trade, cutoff=False)
+
+    await db.refresh(trade)
+    assert trade.status == TradeStatus.CLOSED
+    assert trade.exit_reason == ExitReason.SIGNAL_FADE
+    assert trade.signal_conflict_time is not None
 
 
 @pytest.mark.asyncio

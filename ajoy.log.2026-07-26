@@ -1,0 +1,100 @@
+2026-07-26 08:39:04 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 11:39:55 EDT)" was missed by 0:00:08.685842
+2026-07-26 08:39:04 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 11:39:25 EDT)" was missed by 0:00:09.039912
+2026-07-26 08:39:04 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 11:39:55 EDT)" was missed by 0:00:09.040055
+2026-07-26 08:39:04 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 11:39:25 EDT)" was missed by 0:00:09.040174
+2026-07-26 09:02:01 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 12:02:55 EDT)" was missed by 0:00:05.133922
+2026-07-26 09:02:01 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 12:02:25 EDT)" was missed by 0:00:05.536981
+2026-07-26 09:02:01 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 12:02:55 EDT)" was missed by 0:00:05.538830
+2026-07-26 09:02:01 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 12:02:25 EDT)" was missed by 0:00:05.562183
+2026-07-26 10:03:03 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 13:03:55 EDT)" was missed by 0:00:07.165236
+2026-07-26 10:03:03 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 13:03:25 EDT)" was missed by 0:00:07.511940
+2026-07-26 10:03:03 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 13:03:55 EDT)" was missed by 0:00:07.538343
+2026-07-26 10:03:03 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 13:03:25 EDT)" was missed by 0:00:07.559468
+2026-07-26 11:04:03 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 14:04:55 EDT)" was missed by 0:00:08.070938
+2026-07-26 11:04:04 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 14:04:25 EDT)" was missed by 0:00:08.420058
+2026-07-26 11:04:04 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 14:04:55 EDT)" was missed by 0:00:08.459749
+2026-07-26 11:04:04 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 14:04:25 EDT)" was missed by 0:00:08.500427
+2026-07-26 12:05:05 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 15:05:55 EDT)" was missed by 0:00:09.917351
+2026-07-26 12:05:05 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 15:05:25 EDT)" was missed by 0:00:09.918890
+2026-07-26 12:05:05 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 15:05:55 EDT)" was missed by 0:00:09.919009
+2026-07-26 12:05:05 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 15:05:25 EDT)" was missed by 0:00:09.919101
+2026-07-26 12:57:09 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 15:57:55 EDT)" was missed by 0:00:13.430858
+2026-07-26 12:57:09 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 15:57:25 EDT)" was missed by 0:00:13.431098
+2026-07-26 12:57:09 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 15:57:55 EDT)" was missed by 0:00:13.431212
+2026-07-26 12:57:09 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 15:57:25 EDT)" was missed by 0:00:13.431358
+2026-07-26 13:06:07 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 16:06:25 EDT)" was missed by 0:00:11.780699
+2026-07-26 13:06:08 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 16:06:25 EDT)" was missed by 0:00:12.163764
+2026-07-26 13:06:08 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 16:06:55 EDT)" was missed by 0:00:12.200809
+2026-07-26 13:06:08 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 16:06:55 EDT)" was missed by 0:00:12.234896
+2026-07-26 13:20:36 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 16:20:55 EDT)" was missed by 0:00:10.290518
+2026-07-26 13:20:36 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 16:20:55 EDT)" was missed by 0:00:10.644223
+2026-07-26 13:20:36 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 16:20:55 EDT)" was missed by 0:00:40.680552
+2026-07-26 13:20:36 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 16:20:55 EDT)" was missed by 0:00:40.682965
+2026-07-26 13:21:37 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 16:21:55 EDT)" was missed by 0:00:11.607568
+2026-07-26 13:21:37 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 16:21:55 EDT)" was missed by 0:00:11.607798
+2026-07-26 13:30:07 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 16:30:55 EDT)" was missed by 0:00:11.748685
+2026-07-26 13:30:07 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 16:30:25 EDT)" was missed by 0:00:11.748985
+2026-07-26 13:30:07 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 16:30:55 EDT)" was missed by 0:00:11.753440
+2026-07-26 13:30:07 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 16:30:25 EDT)" was missed by 0:00:11.753619
+2026-07-26 14:07:15 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 17:07:25 EDT)" was missed by 0:00:19.795114
+2026-07-26 14:07:15 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 17:07:25 EDT)" was missed by 0:00:19.837214
+2026-07-26 14:07:15 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 17:07:55 EDT)" was missed by 0:00:19.856045
+2026-07-26 14:07:15 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 17:07:55 EDT)" was missed by 0:00:19.856536
+2026-07-26 14:07:23 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': 
+2026-07-26 15:08:24 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 18:08:25 EDT)" was missed by 0:00:28.264878
+2026-07-26 15:08:24 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 18:08:25 EDT)" was missed by 0:00:28.499107
+2026-07-26 15:08:24 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 18:08:55 EDT)" was missed by 0:00:28.499877
+2026-07-26 15:08:24 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 18:08:55 EDT)" was missed by 0:00:28.499959
+2026-07-26 16:09:32 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 19:09:55 EDT)" was missed by 0:00:06.402762
+2026-07-26 16:09:32 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 19:09:55 EDT)" was missed by 0:00:06.413579
+2026-07-26 16:09:32 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 19:09:55 EDT)" was missed by 0:00:36.417942
+2026-07-26 16:09:32 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 19:09:55 EDT)" was missed by 0:00:36.418073
+2026-07-26 16:52:11 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 19:52:25 EDT)" was missed by 0:00:15.113958
+2026-07-26 16:52:11 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 19:52:25 EDT)" was missed by 0:00:15.427163
+2026-07-26 16:52:11 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 19:52:55 EDT)" was missed by 0:00:15.447565
+2026-07-26 16:52:11 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 19:52:55 EDT)" was missed by 0:00:15.465409
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 16:52:12 WARNING  app.routers.trades  reconcile: could not fetch positions for account 'Primary': [Errno 8] nodename nor servname provided, or not known
+2026-07-26 17:10:38 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 20:10:55 EDT)" was missed by 0:00:12.297241
+2026-07-26 17:10:38 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 20:10:55 EDT)" was missed by 0:00:12.371653
+2026-07-26 17:10:38 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 20:10:55 EDT)" was missed by 0:00:42.372237
+2026-07-26 17:10:38 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 20:10:55 EDT)" was missed by 0:00:42.372284
+2026-07-26 17:54:30 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 20:54:55 EDT)" was missed by 0:00:04.610103
+2026-07-26 17:54:30 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 20:54:55 EDT)" was missed by 0:00:04.682348
+2026-07-26 17:54:30 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 20:54:55 EDT)" was missed by 0:00:34.688218
+2026-07-26 17:54:30 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 20:54:55 EDT)" was missed by 0:00:34.688446
+2026-07-26 17:55:51 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 20:55:55 EDT)" was missed by 0:00:25.476625
+2026-07-26 17:55:51 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 20:55:55 EDT)" was missed by 0:00:25.488572
+2026-07-26 19:06:35 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 22:06:55 EDT)" was missed by 0:00:39.509776
+2026-07-26 19:06:35 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 22:06:55 EDT)" was missed by 0:00:09.509874
+2026-07-26 19:06:35 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 22:06:55 EDT)" was missed by 0:00:39.509927
+2026-07-26 19:06:35 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 22:06:55 EDT)" was missed by 0:00:09.509970
+2026-07-26 19:36:30 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 22:36:55 EDT)" was missed by 0:00:34.774887
+2026-07-26 19:36:30 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 22:36:55 EDT)" was missed by 0:00:04.775131
+2026-07-26 19:36:30 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 22:36:55 EDT)" was missed by 0:00:34.775370
+2026-07-26 19:36:30 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 22:36:55 EDT)" was missed by 0:00:04.775499
+2026-07-26 20:44:52 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries (trigger: interval[0:01:00], next run at: 2026-07-26 23:44:55 EDT)" was missed by 0:00:56.146979
+2026-07-26 20:44:52 WARNING  apscheduler.executors.default  Run time of job "scan_for_entries_s2 (trigger: interval[0:00:30], next run at: 2026-07-26 23:44:55 EDT)" was missed by 0:00:26.147926
+2026-07-26 20:44:52 WARNING  apscheduler.executors.default  Run time of job "scan_for_put_scalp (trigger: interval[0:01:00], next run at: 2026-07-26 23:44:55 EDT)" was missed by 0:00:56.154075
+2026-07-26 20:44:52 WARNING  apscheduler.executors.default  Run time of job "manage_open_trades (trigger: interval[0:00:30], next run at: 2026-07-26 23:44:55 EDT)" was missed by 0:00:26.154232
+INFO:     Started server process [62010]
+INFO:     Waiting for application startup.
+2026-07-26 21:08:15 INFO     app.services.scheduler  Tradier: market data → https://api.tradier.com/v1 | .env orders → https://api.tradier.com/v1 [LIVE] (account 6YB81397)
+2026-07-26 21:08:15 INFO     app.services.scheduler  Scheduler started — scan every 60s, manage every 30s, window 10:55–13:30 ET  | regime gate=ON (QQQ) | IV max=175% | cooldown=30m | sym loss cap=2/day
+2026-07-26 21:08:15 INFO     app.services.s3.engine  [S3] disabled (S3_ENABLED=0) — engine not started
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-07-26 21:08:15 INFO     app.services.scheduler  [accounts] Primary        ENABLED acct=6YB81397   LIVE → S1, S2 | risk S1 $150 / S2 $120 | slots S1 2 / S2 2 / PS 1
+2026-07-26 21:08:15 INFO     app.services.tradier  [accounts] Tradier client created for Primary#1 — orders → LIVE (account 6YB81397)
+INFO:     Started server process [63300]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

@@ -430,8 +430,53 @@
           History (30d)
         </button>
       </div>
-      <button @click="tradeSubTab === 'open' ? loadLive() : tradeSubTab === 'closed' ? loadClosed() : loadHistory()"
-              class="btn-xs">&#8635; Refresh</button>
+      <div style="display:flex; align-items:center; gap:0.5rem;">
+        <!-- Account filter — hidden entirely while only one account exists,
+             so a single-account setup sees the dashboard exactly as before. -->
+        <label x-show="multiAccount" style="font-size:0.75rem; color:#6B7280; font-weight:600;">
+          Account
+        </label>
+        <select x-show="multiAccount" x-model="accountFilter" @change="onAccountFilterChange()"
+                style="font-size:0.78rem; padding:0.25rem 0.5rem; border:1px solid #D1D5DB;
+                       border-radius:0.35rem; background:#fff;">
+          <template x-for="o in accountOptions" :key="o.id">
+            <option :value="o.id" x-text="o.name"></option>
+          </template>
+        </select>
+        <button @click="tradeSubTab === 'open' ? loadLive() : tradeSubTab === 'closed' ? loadClosed() : loadHistory()"
+                class="btn-xs">&#8635; Refresh</button>
+      </div>
+    </div>
+
+    <!-- ── Per-account strip: open positions + today's P&L ─────────── -->
+    <div x-show="multiAccount" class="mb-4"
+         style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+      <template x-for="a in accountSummary" :key="a.id">
+        <div @click="accountFilter = (accountFilter == a.id ? 'all' : String(a.id)); onAccountFilterChange()"
+             :style="'cursor:pointer; border-radius:0.5rem; padding:0.5rem 0.8rem; min-width:9rem; ' +
+                     'border:1.5px solid ' + (accountFilter == a.id ? '#6366F1' : '#E5E7EB') + '; ' +
+                     'background:' + (a.enabled ? '#FFFFFF' : '#F9FAFB') + ';'">
+          <div style="display:flex; align-items:center; gap:0.35rem;">
+            <span style="font-weight:700; font-size:0.8rem;" x-text="a.name"></span>
+            <span x-show="!a.use_sandbox"
+                  style="font-size:0.6rem; font-weight:700; color:#BE123C; background:#FFE4E6;
+                         border-radius:0.25rem; padding:0.05rem 0.3rem;">LIVE</span>
+            <span x-show="a.use_sandbox"
+                  style="font-size:0.6rem; font-weight:700; color:#1D4ED8; background:#DBEAFE;
+                         border-radius:0.25rem; padding:0.05rem 0.3rem;">SBX</span>
+            <span x-show="!a.enabled"
+                  style="font-size:0.6rem; font-weight:700; color:#6B7280; background:#F3F4F6;
+                         border-radius:0.25rem; padding:0.05rem 0.3rem;">PAUSED</span>
+          </div>
+          <div style="font-size:0.72rem; color:#6B7280; margin-top:0.15rem;">
+            <span x-text="a.open_trades"></span> open ·
+            <span :style="a.pnl_today >= 0 ? 'color:#15803D;font-weight:700' : 'color:#BE123C;font-weight:700'"
+                  x-text="fmtDollar(a.pnl_today)"></span> today
+          </div>
+          <div style="font-size:0.65rem; color:#9CA3AF; margin-top:0.1rem;"
+               x-text="a.strategies.map(f => f === 'put_scalp_enabled' ? 'PS' : f.replace('_enabled','').toUpperCase()).join(' · ') || 'no strategies'"></div>
+        </div>
+      </template>
     </div>
 
     <!-- ── Open Positions ─────────────────────────────────────────── -->
@@ -472,6 +517,7 @@
             <thead>
               <tr>
                 <th>CONTRACT</th>
+                <th x-show="multiAccount">ACCOUNT</th>
                 <th style="text-align:right;">QTY</th>
                 <th style="text-align:right;">COST BASIS</th>
                 <th style="text-align:right;">CURRENT PRICE</th>
@@ -492,6 +538,8 @@
                       MANUAL HOLD
                     </span>
                   </td>
+                  <td x-show="multiAccount" class="text-muted" style="font-size:0.75rem;"
+                      x-text="p.account_name || '–'"></td>
                   <td class="text-right" x-text="p.qty"></td>
                   <td class="text-right text-muted" x-text="fmtPrice(p.cost_per_unit)"></td>
                   <td class="text-right font-bold"
@@ -502,13 +550,13 @@
                       x-text="p.live_pnl != null ? fmtDollar(p.live_pnl) : '–'"></td>
                   <td style="text-align:right; white-space:nowrap; display:flex; gap:0.4rem; justify-content:flex-end; align-items:center; padding:0.5rem 0.85rem;">
                     <span x-show="!p.auto_stop_excluded" style="display:flex; gap:0.4rem;">
-                      <button @click="adoptOrphan(p.symbol, p.qty, p.cost_per_unit)"
+                      <button @click="adoptOrphan(p.symbol, p.qty, p.cost_per_unit, p.account_id)"
                               class="action-btn-outline"
                               style="background:#EDE9FE; color:#5B21B6;"
                               title="Adopt into Ajoy — full stop/TP management">
                         Adopt
                       </button>
-                      <button @click="closeOrphan(p.symbol, p.qty)" class="action-btn-danger">
+                      <button @click="closeOrphan(p.symbol, p.qty, p.account_id)" class="action-btn-danger">
                         Close
                       </button>
                     </span>
@@ -524,15 +572,16 @@
         </div>
       </div>
 
-      <div x-show="liveTrades.length === 0 && orphanedPositions.length === 0" class="empty-state" style="padding:4rem 0;">
+      <div x-show="filteredLiveTrades.length === 0 && orphanedPositions.length === 0" class="empty-state" style="padding:4rem 0;">
         No open positions. The agent is scanning for setups during market hours.
       </div>
 
-      <div class="card overflow-hidden" x-show="liveTrades.length > 0">
+      <div class="card overflow-hidden" x-show="filteredLiveTrades.length > 0">
         <table class="data-table">
           <thead>
             <tr>
               <th>SYMBOL</th>
+              <th x-show="multiAccount">ACCOUNT</th>
               <th>DIRECTION</th>
               <th>CONTRACT</th>
               <th style="text-align:right;">QTY</th>
@@ -551,7 +600,7 @@
           </thead>
           <!-- Each iteration owns its own <tbody> — single root avoids
                Alpine v3's fragile multi-root x-for behaviour in tables. -->
-          <template x-for="t in liveTrades" :key="t.id">
+          <template x-for="t in filteredLiveTrades" :key="t.id">
             <tbody>
 
               <!-- ── Main trade row ────────────────────────────────── -->
@@ -565,7 +614,16 @@
                                background:#EDE9FE; color:#6D28D9; vertical-align:middle;">
                     S2
                   </span>
+                  <span x-show="t.strategy_name === 'put_scalp'"
+                        style="display:inline-block; margin-left:0.35rem;
+                               padding:0.1rem 0.4rem; border-radius:4px;
+                               font-size:0.62rem; font-weight:700; letter-spacing:0.06em;
+                               background:#FEE2E2; color:#B91C1C; vertical-align:middle;">
+                    PS
+                  </span>
                 </td>
+                <td x-show="multiAccount" style="font-size:0.75rem; color:#4B5563; white-space:nowrap;"
+                    x-text="t.account_name || accountName(t.account_id)"></td>
                 <td>
                   <span :class="t.direction === 'CALL' ? 'badge-green' : 'badge-red'"
                         x-text="t.direction"></span>
@@ -759,7 +817,7 @@
     <!-- ── Closed Today ───────────────────────────────────────────── -->
     <div x-show="tradeSubTab === 'closed'">
       <!-- Summary strip -->
-      <div x-show="closedToday.length > 0"
+      <div x-show="filteredClosedToday.length > 0"
            class="flex items-center gap-4 mb-3"
            style="background:#F5F3FA; border:1px solid #DDD6EE; border-radius:0.5rem; padding:0.55rem 1rem;">
         <span class="text-xs text-muted">Today's P&L</span>
@@ -771,15 +829,16 @@
         </span>
       </div>
 
-      <div x-show="closedToday.length === 0" class="empty-state" style="padding:4rem 0;">
+      <div x-show="filteredClosedToday.length === 0" class="empty-state" style="padding:4rem 0;">
         No closed trades today.
       </div>
 
-      <div class="card overflow-hidden card-top-teal" x-show="closedToday.length > 0">
+      <div class="card overflow-hidden card-top-teal" x-show="filteredClosedToday.length > 0">
         <table class="data-table">
           <thead>
             <tr>
               <th>SYMBOL</th>
+              <th x-show="multiAccount">ACCOUNT</th>
               <th>DIRECTION</th>
               <th style="text-align:right;">ENTRY</th>
               <th style="text-align:right;">EXIT</th>
@@ -791,7 +850,7 @@
             </tr>
           </thead>
           <tbody>
-            <template x-for="t in closedToday" :key="t.id">
+            <template x-for="t in filteredClosedToday" :key="t.id">
               <tr>
                 <td class="font-bold" style="color:#1C1035;">
                   <span x-text="t.symbol"></span>
@@ -802,7 +861,16 @@
                                background:#EDE9FE; color:#6D28D9; vertical-align:middle;">
                     S2
                   </span>
+                  <span x-show="t.strategy_name === 'put_scalp'"
+                        style="display:inline-block; margin-left:0.35rem;
+                               padding:0.1rem 0.4rem; border-radius:4px;
+                               font-size:0.62rem; font-weight:700; letter-spacing:0.06em;
+                               background:#FEE2E2; color:#B91C1C; vertical-align:middle;">
+                    PS
+                  </span>
                 </td>
+                <td x-show="multiAccount" style="font-size:0.75rem; color:#4B5563; white-space:nowrap;"
+                    x-text="t.account_name || accountName(t.account_id)"></td>
                 <td>
                   <span :class="t.direction === 'CALL' ? 'badge-green' : 'badge-red'"
                         x-text="t.direction"></span>
@@ -915,6 +983,13 @@
                                    background:#EDE9FE; color:#6D28D9; vertical-align:middle;">
                         S2
                       </span>
+                      <span x-show="t.strategy_name === 'put_scalp'"
+                            style="display:inline-block; margin-left:0.35rem;
+                                   padding:0.1rem 0.4rem; border-radius:4px;
+                                   font-size:0.62rem; font-weight:700; letter-spacing:0.06em;
+                                   background:#FEE2E2; color:#B91C1C; vertical-align:middle;">
+                        PS
+                      </span>
                     </td>
                     <td>
                       <span :class="t.direction === 'CALL' ? 'badge-green' : 'badge-red'"
@@ -938,6 +1013,237 @@
           </div>
       </div>
     </div>
+
+  </section>
+
+  <!-- ════════════════════════════════════ ACCOUNTS ═════════════════════ -->
+  <section x-show="activeTab === 'accounts'" x-cloak>
+
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-xs text-muted max-w-2xl leading-relaxed">
+        Each account is a separate Tradier account with its own API token.
+        Every <strong>enabled</strong> account runs the strategies you tick below,
+        using its own risk sizing and slot limits. Blank sizing fields inherit the
+        global values from <strong>Settings</strong>.
+        <br>
+        Strategy toggles are <strong>ANDed with the global master switches</strong> —
+        e.g. S2 only trades on an account when both this checkbox and
+        <code class="slug">S2_ENABLED</code> are on.
+        Adding or editing accounts takes effect on the next scan tick;
+        <strong>no restart needed</strong>.
+      </p>
+      <div style="display:flex; gap:0.5rem;">
+        <button @click="loadAccounts()" class="btn-xs">&#8635; Refresh</button>
+        <button @click="showAddAccount = !showAddAccount" class="btn-xs"
+                style="background:#6366F1; color:#fff; border-color:#6366F1;">
+          <span x-text="showAddAccount ? 'Cancel' : '+ Add account'"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Add-account form ────────────────────────────────────────── -->
+    <div x-show="showAddAccount" x-cloak class="card mb-4" style="padding:1rem;">
+      <div style="font-size:0.75rem; font-weight:700; letter-spacing:0.08em;
+                  color:#4338CA; margin-bottom:0.75rem;">NEW ACCOUNT</div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));
+                  gap:0.75rem; margin-bottom:0.75rem;">
+        <label style="font-size:0.72rem; color:#4B5563;">
+          Name
+          <input x-model="newAccount.name" placeholder="e.g. Roth IRA"
+                 style="width:100%; padding:0.35rem 0.5rem; border:1px solid #D1D5DB;
+                        border-radius:0.35rem; font-size:0.8rem;">
+        </label>
+        <label style="font-size:0.72rem; color:#4B5563;">
+          Tradier account number
+          <input x-model="newAccount.account_number" placeholder="6YB81397 or VA1234567"
+                 style="width:100%; padding:0.35rem 0.5rem; border:1px solid #D1D5DB;
+                        border-radius:0.35rem; font-size:0.8rem; font-family:monospace;">
+        </label>
+        <label style="font-size:0.72rem; color:#4B5563;">
+          API token (orders)
+          <input x-model="newAccount.api_token" type="password" placeholder="Tradier access token"
+                 style="width:100%; padding:0.35rem 0.5rem; border:1px solid #D1D5DB;
+                        border-radius:0.35rem; font-size:0.8rem; font-family:monospace;">
+        </label>
+        <label style="font-size:0.72rem; color:#4B5563;"
+               title="Optional. Leave blank to share the global market-data token from .env — market data is account-agnostic.">
+          Market-data token (optional) ⓘ
+          <input x-model="newAccount.data_api_token" type="password" placeholder="blank = share global"
+                 style="width:100%; padding:0.35rem 0.5rem; border:1px solid #D1D5DB;
+                        border-radius:0.35rem; font-size:0.8rem; font-family:monospace;">
+        </label>
+      </div>
+
+      <div style="display:flex; gap:1.25rem; flex-wrap:wrap; align-items:center; margin-bottom:0.75rem;">
+        <label style="font-size:0.78rem; display:flex; align-items:center; gap:0.35rem;">
+          <input type="checkbox" x-model="newAccount.use_sandbox"> Sandbox (paper)
+        </label>
+        <span x-show="!newAccount.use_sandbox"
+              style="font-size:0.72rem; font-weight:700; color:#BE123C; background:#FFE4E6;
+                     border:1px solid #FDA4AF; border-radius:0.3rem; padding:0.15rem 0.45rem;">
+          ⚠ LIVE — real money orders
+        </span>
+        <label style="font-size:0.78rem; display:flex; align-items:center; gap:0.35rem;">
+          <input type="checkbox" x-model="newAccount.enabled"> Enabled
+        </label>
+        <span style="font-size:0.72rem; color:#6B7280;">Strategies:</span>
+        <template x-for="f in accountStrategyFlags" :key="f.key">
+          <label style="font-size:0.78rem; display:flex; align-items:center; gap:0.3rem;"
+                 :title="f.title">
+            <input type="checkbox" :checked="newAccount[f.key]"
+                   @change="newAccount[f.key] = $event.target.checked">
+            <span x-text="f.label"></span>
+          </label>
+        </template>
+      </div>
+
+      <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.06em; color:#6B7280;
+                  margin-bottom:0.4rem;">SIZING &amp; SLOTS — blank inherits the global setting</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));
+                  gap:0.5rem; margin-bottom:0.75rem;">
+        <template x-for="f in accountOverrideFields" :key="f.key">
+          <label style="font-size:0.68rem; color:#6B7280;">
+            <span x-text="f.label"></span>
+            <input type="number" step="any" :value="newAccount[f.key]"
+                   @input="newAccount[f.key] = $event.target.value" placeholder="inherit"
+                   style="width:100%; padding:0.3rem 0.4rem; border:1px solid #D1D5DB;
+                          border-radius:0.3rem; font-size:0.78rem;">
+          </label>
+        </template>
+      </div>
+
+      <button @click="addAccount()" class="btn-xs"
+              style="background:#4338CA; color:#fff; border-color:#4338CA;">Add account</button>
+    </div>
+
+    <!-- ── Account list ────────────────────────────────────────────── -->
+    <div x-show="accounts.length === 0 && !accountsLoading" class="empty-state" style="padding:3rem 0;">
+      No accounts yet — the primary account is created from <code class="slug">.env</code> on startup.
+    </div>
+
+    <template x-for="a in accounts" :key="a.id">
+      <div class="card mb-3" style="padding:0.9rem 1rem;"
+           :style="a.enabled ? '' : 'background:#FAFAFA;'">
+
+        <!-- Header row -->
+        <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+          <span style="font-weight:700; font-size:0.95rem; color:#1C1035;" x-text="a.name"></span>
+          <span x-show="a.is_primary"
+                style="font-size:0.6rem; font-weight:700; color:#4338CA; background:#E0E7FF;
+                       border-radius:0.25rem; padding:0.1rem 0.35rem;">PRIMARY</span>
+          <span :style="a.use_sandbox
+                  ? 'font-size:0.62rem;font-weight:700;color:#1D4ED8;background:#DBEAFE;border-radius:0.25rem;padding:0.1rem 0.4rem;'
+                  : 'font-size:0.62rem;font-weight:700;color:#BE123C;background:#FFE4E6;border-radius:0.25rem;padding:0.1rem 0.4rem;'"
+                x-text="a.use_sandbox ? 'SANDBOX' : 'LIVE'"></span>
+          <code class="slug" x-text="a.account_number || 'no account #'"></code>
+          <code class="slug" style="color:#9CA3AF;" x-text="a.api_token_masked || 'no token'"></code>
+
+          <span style="flex:1;"></span>
+
+          <span style="font-size:0.72rem; color:#6B7280;">
+            <span x-text="summaryFor(a.id).open_trades"></span> open ·
+            <span :style="summaryFor(a.id).pnl_today >= 0 ? 'color:#15803D;font-weight:700' : 'color:#BE123C;font-weight:700'"
+                  x-text="fmtDollar(summaryFor(a.id).pnl_today)"></span> today
+          </span>
+
+          <button @click="toggleAccountEnabled(a)" class="btn-xs"
+                  :style="a.enabled
+                    ? 'background:#DCFCE7;color:#166534;border-color:#86EFAC;'
+                    : 'background:#F3F4F6;color:#6B7280;'"
+                  x-text="a.enabled ? 'Enabled' : 'Paused'"></button>
+          <button @click="verifyAccount(a)" class="btn-xs">Test</button>
+          <button @click="editingAccountId = (editingAccountId === a.id ? null : a.id)"
+                  class="btn-xs" x-text="editingAccountId === a.id ? 'Close' : 'Edit'"></button>
+          <button x-show="!a.is_primary" @click="deleteAccount(a)"
+                  class="btn-xs" style="background:#FEE2E2;color:#B91C1C;border-color:#FCA5A5;">Delete</button>
+        </div>
+
+        <!-- Strategy toggle matrix — click to enrol / withdraw this account -->
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.6rem; flex-wrap:wrap;">
+          <span style="font-size:0.7rem; color:#6B7280; font-weight:600;">Strategies</span>
+          <template x-for="f in accountStrategyFlags" :key="f.key">
+            <button @click="toggleAccountStrategy(a, f.key)" :title="f.title"
+                    :style="a[f.key]
+                      ? 'font-size:0.72rem;font-weight:700;padding:0.2rem 0.6rem;border-radius:9999px;border:1.5px solid #6366F1;background:#EEF2FF;color:#4338CA;cursor:pointer;'
+                      : 'font-size:0.72rem;font-weight:700;padding:0.2rem 0.6rem;border-radius:9999px;border:1.5px solid #E5E7EB;background:#fff;color:#9CA3AF;cursor:pointer;'"
+                    x-text="f.label"></button>
+          </template>
+          <span x-show="accountVerify[a.id]"
+                :style="accountVerify[a.id] && accountVerify[a.id].ok === false
+                  ? 'font-size:0.72rem;color:#B91C1C;margin-left:0.5rem;'
+                  : 'font-size:0.72rem;color:#15803D;margin-left:0.5rem;'"
+                x-text="accountVerify[a.id] ? accountVerify[a.id].msg : ''"></span>
+          <span x-show="accountSaving[a.id] === 'saved'"
+                style="font-size:0.72rem;color:#15803D;">saved ✓</span>
+          <span x-show="accountSaving[a.id] === 'saving'"
+                style="font-size:0.72rem;color:#6B7280;">saving…</span>
+        </div>
+
+        <!-- ── Edit panel ─────────────────────────────────────────── -->
+        <div x-show="editingAccountId === a.id" x-cloak
+             style="margin-top:0.85rem; padding-top:0.85rem; border-top:1px solid #E5E7EB;">
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));
+                      gap:0.75rem; margin-bottom:0.75rem;">
+            <label style="font-size:0.72rem; color:#4B5563;">
+              Name
+              <input x-model="a.name"
+                     style="width:100%; padding:0.35rem 0.5rem; border:1px solid #D1D5DB;
+                            border-radius:0.35rem; font-size:0.8rem;">
+            </label>
+            <label style="font-size:0.72rem; color:#4B5563;">
+              Tradier account number
+              <input x-model="a.account_number"
+                     style="width:100%; padding:0.35rem 0.5rem; border:1px solid #D1D5DB;
+                            border-radius:0.35rem; font-size:0.8rem; font-family:monospace;">
+            </label>
+            <label style="font-size:0.72rem; color:#4B5563;"
+                   title="Leave blank to keep the stored token unchanged.">
+              New API token (blank = unchanged) ⓘ
+              <input x-model="a._new_token" type="password" placeholder="leave blank to keep current"
+                     style="width:100%; padding:0.35rem 0.5rem; border:1px solid #D1D5DB;
+                            border-radius:0.35rem; font-size:0.8rem; font-family:monospace;">
+            </label>
+            <label style="font-size:0.72rem; color:#4B5563;">
+              New market-data token (optional)
+              <input x-model="a._new_data_token" type="password" placeholder="blank = keep / share global"
+                     style="width:100%; padding:0.35rem 0.5rem; border:1px solid #D1D5DB;
+                            border-radius:0.35rem; font-size:0.8rem; font-family:monospace;">
+            </label>
+          </div>
+
+          <label style="font-size:0.78rem; display:flex; align-items:center; gap:0.35rem; margin-bottom:0.75rem;">
+            <input type="checkbox" x-model="a.use_sandbox"> Sandbox (paper) — untick for LIVE real-money orders
+          </label>
+
+          <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.06em; color:#6B7280;
+                      margin-bottom:0.4rem;">SIZING &amp; SLOTS — blank inherits the global setting</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));
+                      gap:0.5rem; margin-bottom:0.75rem;">
+            <template x-for="f in accountOverrideFields" :key="f.key">
+              <label style="font-size:0.68rem; color:#6B7280;">
+                <span x-text="f.label"></span>
+                <input type="number" step="any" :value="a[f.key] ?? ''"
+                       @input="a[f.key] = $event.target.value" placeholder="inherit"
+                       style="width:100%; padding:0.3rem 0.4rem; border:1px solid #D1D5DB;
+                              border-radius:0.3rem; font-size:0.78rem;">
+              </label>
+            </template>
+          </div>
+
+          <label style="font-size:0.72rem; color:#4B5563; display:block; margin-bottom:0.75rem;">
+            Notes
+            <input x-model="a.notes" placeholder="what this account is for"
+                   style="width:100%; padding:0.35rem 0.5rem; border:1px solid #D1D5DB;
+                          border-radius:0.35rem; font-size:0.8rem;">
+          </label>
+
+          <button @click="saveAccount(a)" class="btn-xs"
+                  style="background:#4338CA; color:#fff; border-color:#4338CA;">Save changes</button>
+        </div>
+      </div>
+    </template>
 
   </section>
 
@@ -1222,6 +1528,6 @@
 
 </main>
 
-<script src="/static/js/app.js?v=23"></script>
+<script src="/static/js/app.js?v=27"></script>
 </body>
 </html>

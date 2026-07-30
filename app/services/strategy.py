@@ -1153,6 +1153,7 @@ def check_exit_conditions(
     now: Optional[datetime] = None,
     stop_eval_price: Optional[float] = None,
     original_stop: Optional[float] = None,
+    stop_min_hold_minutes: Optional[int] = None,
 ) -> Optional[ExitCondition]:
     """
     Evaluate exit conditions in priority order (v1 — single-target, 100% exit):
@@ -1215,16 +1216,21 @@ def check_exit_conditions(
     #    Label distinguishes the original hard stop from a trailing stop that
     #    was raised above it (profit-lock) — keeps exit-reason analytics honest.
     _stop_suppressed = False
-    if settings.stop_loss_min_hold_minutes > 0 and entry_time is not None:
+    # Per-trade override (PUT scalp uses 6 min) — falls back to the global.
+    _stop_hold = (
+        stop_min_hold_minutes if stop_min_hold_minutes is not None
+        else settings.stop_loss_min_hold_minutes
+    )
+    if _stop_hold > 0 and entry_time is not None:
         _now_s  = now or datetime.now(tz=timezone.utc)
         _entr_s = entry_time if entry_time.tzinfo else entry_time.replace(tzinfo=timezone.utc)
         _held_m = (_now_s - _entr_s).total_seconds() / 60
-        if _held_m < settings.stop_loss_min_hold_minutes:
+        if _held_m < _stop_hold:
             _stop_suppressed = True
             logger.debug(
                 "[exit] Hard stop suppressed — %.1f min into trade "
                 "(min hold=%d min). current=%.2f stop=%.2f",
-                _held_m, settings.stop_loss_min_hold_minutes,
+                _held_m, _stop_hold,
                 stop_price_eval, stop_price,
             )
 

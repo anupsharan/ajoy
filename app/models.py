@@ -50,6 +50,7 @@ class ExitReason(str, PyEnum):
     EMA_CROSS = "EMA_CROSS"         # S2: opposite EMA crossover on 1-min → signal-based exit
     STRUCT_EXIT = "STRUCT_EXIT"     # S2: 1-min closes back through 5-min EMA9 — thesis invalidated
     RUNNER = "RUNNER"               # runner-mode trail fired after TP was waived at the target
+    SIGNAL_FADE = "SIGNAL_FADE"     # Stock Trend AND Thesis both flipped against the trade
     CUTOFF = "CUTOFF"
     MANUAL = "MANUAL"
     R1 = "R1"                       # S3: final exit at the +1R scale-out
@@ -57,6 +58,75 @@ class ExitReason(str, PyEnum):
     EMA9_EXIT = "EMA9_EXIT"         # S3: runner closed on 1-min close below EMA9
     STAGNATION = "STAGNATION"       # S3: no new post-entry high within the window
     RECLAIM_FAIL = "RECLAIM_FAIL"   # S3: price printed back below the former wall
+
+
+# ---------------------------------------------------------------------------
+# Accounts  (multi-account support, Jul 25 2026)
+#
+# Before this table the bot was hard-wired to ONE Tradier account defined in
+# .env (TRADIER_ACCOUNT_ID + TRADIER_API_TOKEN).  Each row here is an
+# independent brokerage account with its own credentials, its own strategy
+# enrolment (S1 / S2 / S3 / PS) and its own sizing + slot limits.  The
+# scheduler runs every ENABLED account through the same signal stack on every
+# tick, so one signal can open a trade in several accounts at different sizes.
+#
+# Safety notes:
+#   - `enabled=False` takes an account completely out of the scan loop; its
+#     OPEN trades are still MANAGED (never abandon a live position).
+#   - NULL in any override column means "use the global setting from .env".
+#   - The first account is auto-seeded from .env on startup and marked
+#     is_primary — legacy trades (account_id IS NULL) are backfilled to it.
+# ---------------------------------------------------------------------------
+
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)
+    broker: Mapped[str] = mapped_column(String(20), default="tradier", nullable=False)
+
+    # ── Credentials ──────────────────────────────────────────────────────
+    # account_number = Tradier account id (live 6-digit, or sandbox "VA…")
+    # api_token      = token used for ORDERS + balances/positions on this account
+    # data_api_token = optional production token for market data; blank means
+    #                  "use the global TRADIER_API_TOKEN" (market data is
+    #                  account-agnostic, so sharing one token is normal).
+    account_number: Mapped[str] = mapped_column(String(40), default="", nullable=False)
+    api_token: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    data_api_token: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    use_sandbox: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # ── State ────────────────────────────────────────────────────────────
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # The account migrated from .env.  Legacy trades belong to it and it is
+    # the fallback for anything that cannot resolve an account.
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    # ── Per-account strategy enrolment ───────────────────────────────────
+    # ANDed with the global master switches (S2_ENABLED, PUT_SCALP_ENABLED,
+    # S3_ENABLED): a strategy runs on an account only when BOTH are on.
+    s1_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    s2_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    s3_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    put_scalp_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # ── Per-account sizing / slots (NULL = inherit the global setting) ────
+    max_open_trades: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    risk_per_trade: Mapped[float | None] = mapped_column(Float, nullable=True)
+    amount_per_trade: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_daily_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    s2_max_open_trades: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    s2_risk_per_trade: Mapped[float | None] = mapped_column(Float, nullable=True)
+    s2_amount_per_trade: Mapped[float | None] = mapped_column(Float, nullable=True)
+    s2_max_daily_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    put_scalp_max_open: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    put_scalp_risk_per_trade: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +226,15 @@ class Trade(Base):
     direction: Mapped[Direction] = mapped_column(Enum(Direction), nullable=False)
     strategy_name: Mapped[str] = mapped_column(String(100), default="vwap_pullback")
 
+    # Which brokerage account this position lives in (multi-account, Jul 25
+    # 2026).  NULL only for rows written before the accounts table existed —
+    # the seeder backfills those to the primary account.  Every exit, broker
+    # order cancel and reconciliation MUST go through this account's client,
+    # otherwise the bot would try to sell a position in the wrong account.
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id"), nullable=True, index=True
+    )
+
     # Order / execution details
     tradier_order_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     stop_order_id: Mapped[str | None] = mapped_column(String(50), nullable=True)  # broker-side resting stop order
@@ -189,6 +268,11 @@ class Trade(Base):
     # waive a HUMAN-set target (GOOGL #140: user set $3.84, runner waived it
     # and trailed out below entry).
     tp_manual: Mapped[bool] = mapped_column(Boolean, default=False)
+    # First moment Stock Trend + Thesis both conflicted with the trade
+    # direction (basis of the SIGNAL_FADE exit; kept for later analysis).
+    signal_conflict_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     remaining_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Exit

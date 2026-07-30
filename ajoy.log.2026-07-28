@@ -1,0 +1,1561 @@
+2026-07-28 07:55:03 INFO     app.services.scheduler  Tradier: market data → https://api.tradier.com/v1 | .env orders → https://api.tradier.com/v1 [LIVE] (account 6YB81397)
+2026-07-28 07:55:03 INFO     app.services.scheduler  Scheduler started — scan every 60s, manage every 30s, window 10:20–13:30 ET  | regime gate=ON (QQQ) | IV max=175% | cooldown=30m | sym loss cap=2/day
+2026-07-28 07:55:03 INFO     app.services.s3.engine  [S3] disabled (S3_ENABLED=0) — engine not started
+2026-07-28 07:55:03 INFO     app.services.scheduler  [accounts] Primary        ENABLED acct=6YB81397   LIVE → S1, S2 | risk S1 $150 / S2 $120 | slots S1 2 / S2 2 / PS 1
+2026-07-28 07:55:03 INFO     app.services.tradier  [accounts] Tradier client created for Primary#1 — orders → LIVE (account 6YB81397)
+2026-07-28 07:55:35 INFO     app.services.strategy_ema  [S2-5m-filter][AAPL] CALL blocked — EMA9=337.6961 EMA21=337.4086 close=337.2250 VWAP=338.4488 EMA9_slope=↓ EMA21_slope=↓
+2026-07-28 07:55:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 07:55:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] CALL OK — EMA9=195.6331 > EMA21=195.3924 close=197.3700 > VWAP=194.4962 slopes both↑
+2026-07-28 07:55:35 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 07:55:35 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.9100 close=197.1900 EMA9=195.6331 (need low≤EMA9 or close within 0.1956)
+2026-07-28 07:55:35 INFO     app.services.strategy_ema  [S2-5m-filter][AMZN] CALL blocked — EMA9=229.1233 EMA21=229.8477 close=228.7550 VWAP=230.0406 EMA9_slope=↓ EMA21_slope=↓
+2026-07-28 07:55:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 07:55:35 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 07:55:35 INFO     app.services.scheduler  [energy-gate][GOOGL] Symbol not in play — true range 50% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:55:36 INFO     app.services.strategy_ema  [S2-5m-filter][PLTR] CALL blocked — EMA9=120.1245 EMA21=122.0517 close=121.1800 VWAP=120.6867 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 07:55:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 07:55:36 INFO     app.services.strategy_ema  [S2-5m-filter][INTC] CALL blocked — EMA9=85.1471 EMA21=86.1692 close=86.1650 VWAP=85.2026 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 07:55:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 07:55:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] CALL OK — EMA9=109.8050 > EMA21=108.8457 close=110.2300 > VWAP=108.7459 slopes both↑
+2026-07-28 07:55:36 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 15 bars old — within 40-bar window ✓
+2026-07-28 07:55:36 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.1500 close=110.2699 EMA9=109.8050 (need low≤EMA9 or close within 0.1098)
+2026-07-28 07:55:37 INFO     app.services.strategy_ema  [S2-5m-filter][ORCL] CALL blocked — EMA9=116.4615 EMA21=116.7595 close=118.2000 VWAP=115.9225 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 07:55:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 07:55:37 INFO     app.services.strategy_ema  [S2-5m-filter][NFLX] CALL blocked — EMA9=73.3172 EMA21=72.8361 close=73.1200 VWAP=73.1928 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 07:55:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 07:55:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] CALL OK — EMA9=130.5204 > EMA21=129.3726 close=131.2225 > VWAP=129.8966 slopes both↑
+2026-07-28 07:55:37 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:55:37 INFO     app.services.strategy_ema  [S2-5m-filter][SOFI] CALL blocked — EMA9=16.3807 EMA21=16.4543 close=16.4550 VWAP=16.3577 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 07:55:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 07:55:38 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] CALL OK — EMA9=69.4930 > EMA21=69.1186 close=69.7200 > VWAP=69.2910 slopes both↑
+2026-07-28 07:55:38 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:55:38 INFO     app.services.strategy_ema  [S2-5m-filter][COIN] CALL blocked — EMA9=163.5041 EMA21=163.6115 close=164.5250 VWAP=161.9966 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 07:55:38 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 07:55:38 INFO     app.services.strategy_ema  [S2-5m-filter][RIVN] CALL blocked — EMA9=16.0540 EMA21=16.1345 close=16.1150 VWAP=16.0289 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 07:55:38 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 07:55:39 INFO     app.services.strategy_ema  [S2-5m-filter][F] CALL blocked — EMA9=14.7513 EMA21=14.7258 close=14.7600 VWAP=14.7853 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 07:55:39 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 07:55:39 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] CALL OK — EMA9=29.1507 > EMA21=28.9999 close=29.2800 > VWAP=29.0130 slopes both↑
+2026-07-28 07:55:39 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:55:39 INFO     app.services.strategy_ema  [S2-5m-filter][JOBY] CALL blocked — EMA9=7.1183 EMA21=7.1375 close=7.1950 VWAP=7.0977 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 07:55:39 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 07:55:39 INFO     app.services.strategy_ema  [S2-5m-filter][WMT] CALL blocked — EMA9=115.3777 EMA21=114.6809 close=115.2700 VWAP=115.0720 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 07:55:39 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 07:55:39 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:55:39 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] CALL OK — EMA9=364.5645 > EMA21=364.4966 close=365.1800 > VWAP=364.4435 slopes both↑
+2026-07-28 07:55:39 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 07:55:40 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=365.2200 close=365.2500 EMA9=364.5645 (need low≤EMA9 or close within 0.3646)
+2026-07-28 07:55:40 INFO     app.services.strategy_ema  [S2-5m-filter][FISV] CALL blocked — EMA9=53.6738 EMA21=53.3631 close=53.6000 VWAP=53.4154 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 07:55:40 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 07:56:03 INFO     app.services.scheduler  [Primary] [adaptive-band] QQQ → band=0.80% (normal (adaptive off)) | regime=BULLISH
+2026-07-28 07:56:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 07:56:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 07:56:04 INFO     app.services.strategy  [AAPL] [L1] CALL rejected — price 337.15 is BELOW VWAP 338.53 (wrong side for bullish bounce)
+2026-07-28 07:56:04 INFO     app.services.strategy  [NVDA] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 07:56:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 07:56:04 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 07:56:04 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=197.0201 close=197.3700 EMA9=195.6331 (need low≤EMA9 or close within 0.1956)
+2026-07-28 07:56:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 07:56:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 07:56:04 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 07:56:04 INFO     app.services.scheduler  [energy-gate][GOOGL] Symbol not in play — true range 50% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:56:04 INFO     app.services.strategy  [INTC] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 07:56:04 INFO     app.services.strategy  [GOOGL] [L1] Signal: CALL  price=329.07  vwap=327.31  distance=0.536%  trend=bullish
+2026-07-28 07:56:04 INFO     app.services.scheduler  [GOOGL] All Layers 1–5 passed: CALL  price=329.07  vwap=327.31
+2026-07-28 07:56:05 INFO     app.services.strategy  [AMZN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 07:56:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 07:56:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 07:56:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 07:56:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 07:56:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 07:56:05 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 15 bars old — within 40-bar window ✓
+2026-07-28 07:56:06 INFO     app.services.strategy  [NOW] [L1] CALL rejected — price 110.15 is 1.190% from VWAP 108.85 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 07:56:06 INFO     app.services.strategy  [PLTR] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 07:56:06 INFO     app.services.scheduler  [GOOGL] Limit order 138890246 placed: GOOGL260729C00327500 x1 @ $3.97 (ask $4.05, saving $0.08/contract)
+2026-07-28 07:56:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 07:56:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 07:56:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 07:56:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 07:56:06 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.1300 close=110.2300 EMA9=109.8050 (need low≤EMA9 or close within 0.1098)
+2026-07-28 07:56:06 INFO     app.services.strategy  [ORCL] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 07:56:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 07:56:07 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:56:07 INFO     app.services.strategy  [SHOP] [L1] CALL rejected — price 131.34 is 1.059% from VWAP 129.96 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 07:56:07 INFO     app.services.strategy  [NFLX] [L1] CALL rejected — price 72.98 is BELOW VWAP 73.20 (wrong side for bullish bounce)
+2026-07-28 07:56:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 07:56:07 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:56:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 07:56:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 07:56:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 07:56:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 07:56:07 INFO     app.services.strategy  [CRM] [L1] Signal: CALL  price=181.92  vwap=180.71  distance=0.669%  trend=bullish
+2026-07-28 07:56:07 INFO     app.services.scheduler  [CRM] All Layers 1–5 passed: CALL  price=181.92  vwap=180.71
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 07:56:08 INFO     app.services.strategy  [IWM] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 07:56:08 INFO     app.services.scheduler  [CRM] Limit order 138890258 placed: CRM260731C00182500 x1 @ $3.75 (ask $3.90, saving $0.15/contract)
+2026-07-28 07:56:08 INFO     app.services.strategy  [SOFI] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 07:56:08 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 07:56:08 INFO     app.services.strategy  [UBER] [L1] Signal: CALL  price=69.72  vwap=69.29  distance=0.620%  trend=bullish
+2026-07-28 07:56:08 INFO     app.services.strategy  [L2] Directional bounce NOT confirmed for CALL — closes not rising. Last closes: [69.71]
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 07:56:08 INFO     app.services.strategy  [COIN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 07:56:08 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=365.1500 close=365.1800 EMA9=364.5645 (need low≤EMA9 or close within 0.3646)
+2026-07-28 07:56:09 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:56:09 INFO     app.services.strategy  [F] [L1] CALL rejected — price 14.77 is BELOW VWAP 14.79 (wrong side for bullish bounce)
+2026-07-28 07:56:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 07:56:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 07:56:09 INFO     app.services.strategy  [CELH] [L1] CALL rejected — price 29.27 is 0.848% from VWAP 29.02 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 07:56:09 INFO     app.services.strategy  [WMT] [L1] CALL rejected — price 115.28 is only 0.175% from VWAP 115.07 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 07:56:09 INFO     app.services.strategy  [VTI] [L1] trend=neutral (price=365.27 vs EMA21) — no signal
+2026-07-28 07:56:09 INFO     app.services.strategy  [FISV] [L1] CALL rejected — price 53.58 is only 0.301% from VWAP 53.42 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 07:56:10 INFO     app.services.scheduler  [Primary] [CRM] Trade OPENED: CALL CRM260731C00182500 x1 @ $3.75  SL=3.23  TP=4.42  (premium $375, risk-at-stop $52)
+2026-07-28 07:56:10 INFO     app.services.scheduler  [CRM] Broker disaster stop placed: order 138890292 @ $3.04 (bot stop $3.23 − 6% buffer)
+2026-07-28 07:56:10 INFO     app.services.scheduler  [CRM] Broker TP skipped — resting disaster stop 138890292 already reserves the contracts (bot-side TP remains active)
+2026-07-28 07:56:17 INFO     app.services.scheduler  [Primary] [GOOGL] Trade OPENED: CALL GOOGL260729C00327500 x1 @ $3.97  SL=3.41  TP=4.68  (premium $397, risk-at-stop $56)
+2026-07-28 07:56:17 INFO     app.services.scheduler  [GOOGL] Broker disaster stop placed: order 138890396 @ $3.21 (bot stop $3.41 − 6% buffer)
+2026-07-28 07:56:17 INFO     app.services.scheduler  [GOOGL] Broker TP skipped — resting disaster stop 138890396 already reserves the contracts (bot-side TP remains active)
+2026-07-28 07:56:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 07:56:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 07:56:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 07:56:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 07:56:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 07:56:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 07:56:33 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 07:56:33 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=197.0201 close=197.3700 EMA9=195.6331 (need low≤EMA9 or close within 0.1956)
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 15 bars old — within 40-bar window ✓
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.1300 close=110.2300 EMA9=109.8050 (need low≤EMA9 or close within 0.1098)
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 07:56:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 07:56:34 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 07:56:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 07:56:35 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 07:56:35 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 07:56:36 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:56:36 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=365.1500 close=365.1800 EMA9=364.5645 (need low≤EMA9 or close within 0.3646)
+2026-07-28 07:56:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 07:56:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 07:57:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 07:57:04 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 07:57:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 07:57:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 07:57:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 07:57:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 07:57:04 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 07:57:04 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.9042 close=197.2499 EMA9=195.6331 (need low≤EMA9 or close within 0.1956)
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 15 bars old — within 40-bar window ✓
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0400 close=110.1600 EMA9=109.8050 (need low≤EMA9 or close within 0.1098)
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 07:57:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 07:57:05 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 07:57:06 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 07:57:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 07:57:06 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:57:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 07:57:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 07:57:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 07:57:07 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 07:57:07 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:57:07 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=365.1189 close=365.3200 EMA9=364.5645 (need low≤EMA9 or close within 0.3646)
+2026-07-28 07:57:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 07:57:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 07:57:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 07:57:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 07:57:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 07:57:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 07:57:33 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.9042 close=197.2499 EMA9=195.6331 (need low≤EMA9 or close within 0.1956)
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 15 bars old — within 40-bar window ✓
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0400 close=110.1600 EMA9=109.8050 (need low≤EMA9 or close within 0.1098)
+2026-07-28 07:57:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 07:57:34 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 07:57:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 07:57:35 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 07:57:35 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 07:57:36 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:57:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 07:57:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 07:57:36 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=365.1189 close=365.3200 EMA9=364.5645 (need low≤EMA9 or close within 0.3646)
+2026-07-28 07:58:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 07:58:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 07:58:03 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 07:58:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 07:58:03 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 07:58:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 07:58:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 07:58:03 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.8000 close=196.9350 EMA9=195.6331 (need low≤EMA9 or close within 0.1956)
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 15 bars old — within 40-bar window ✓
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0000 close=110.0200 EMA9=109.8050 (need low≤EMA9 or close within 0.1098)
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 07:58:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 07:58:04 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:58:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 07:58:05 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:58:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 07:58:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 07:58:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 07:58:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 07:58:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 07:58:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 07:58:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 07:58:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 07:58:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 07:58:06 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:58:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 07:58:06 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 07:58:06 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=365.1205 close=365.1550 EMA9=364.5645 (need low≤EMA9 or close within 0.3646)
+2026-07-28 07:58:06 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:58:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 07:58:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 07:58:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 07:58:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 07:58:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 07:58:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 07:58:33 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 07:58:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 07:58:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 07:58:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 07:58:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.8000 close=196.9350 EMA9=195.6331 (need low≤EMA9 or close within 0.1956)
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 15 bars old — within 40-bar window ✓
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 07:58:34 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0000 close=110.0200 EMA9=109.8050 (need low≤EMA9 or close within 0.1098)
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 07:58:35 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 07:58:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 07:58:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 07:58:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 07:58:36 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:58:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 07:58:36 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 07:58:36 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=365.1205 close=365.1550 EMA9=364.5645 (need low≤EMA9 or close within 0.3646)
+2026-07-28 07:58:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 07:58:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 07:58:36 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:59:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 07:59:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 07:59:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 07:59:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 07:59:03 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 07:59:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 07:59:03 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 07:59:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 07:59:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.3800 close=196.5250 EMA9=195.6331 (need low≤EMA9 or close within 0.1956)
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 15 bars old — within 40-bar window ✓
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0000 close=110.2500 EMA9=109.8050 (need low≤EMA9 or close within 0.1098)
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 07:59:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 07:59:04 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:59:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 07:59:05 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:59:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 07:59:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 07:59:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 07:59:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 07:59:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 07:59:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 07:59:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 07:59:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 07:59:06 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 07:59:06 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=364.9000 close=364.9550 EMA9=364.5645 (need low≤EMA9 or close within 0.3646)
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 07:59:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 07:59:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 07:59:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 07:59:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 07:59:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 07:59:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 07:59:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 07:59:33 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 07:59:33 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.3800 close=196.5250 EMA9=195.6331 (need low≤EMA9 or close within 0.1956)
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 15 bars old — within 40-bar window ✓
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0000 close=110.2500 EMA9=109.8050 (need low≤EMA9 or close within 0.1098)
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 07:59:34 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 07:59:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 07:59:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 07:59:35 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 07:59:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 07:59:36 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 07:59:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 07:59:36 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 07:59:36 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=364.9000 close=364.9550 EMA9=364.5645 (need low≤EMA9 or close within 0.3646)
+2026-07-28 07:59:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 07:59:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:00:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] CALL OK — EMA9=195.8605 > EMA21=195.5176 close=196.7700 > VWAP=194.5858 slopes both↑
+2026-07-28 08:00:04 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:00:05 INFO     app.services.strategy_ema  [S2-5m-filter][AAPL] CALL blocked — EMA9=337.5679 EMA21=337.3764 close=337.0550 VWAP=338.4127 EMA9_slope=↓ EMA21_slope=↓
+2026-07-28 08:00:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:00:05 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.4100 close=196.6700 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:00:07 INFO     app.services.strategy_ema  [S2-5m-filter][INTC] CALL blocked — EMA9=85.3396 EMA21=86.1638 close=86.1100 VWAP=85.2417 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:00:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:00:07 INFO     app.services.strategy_ema  [S2-5m-filter][PLTR] CALL blocked — EMA9=120.2256 EMA21=121.9225 close=120.6300 VWAP=120.6898 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:00:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:00:08 INFO     app.services.strategy_ema  [S2-5m-filter][AMZN] CALL blocked — EMA9=229.1327 EMA21=229.7861 close=229.1700 VWAP=230.0121 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:00:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:00:09 INFO     app.services.strategy_ema  [S2-5m-filter][NOW] CALL blocked — EMA9=109.7720 EMA21=108.9179 close=109.6400 VWAP=108.7871 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 08:00:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:00:09 INFO     app.services.strategy_ema  [S2-5m-filter][NFLX] CALL blocked — EMA9=73.2258 EMA21=72.8383 close=72.8600 VWAP=73.1852 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 08:00:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:00:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] CALL OK — EMA9=130.6603 > EMA21=129.5405 close=131.2200 > VWAP=129.9353 slopes both↑
+2026-07-28 08:00:09 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:00:10 INFO     app.services.strategy_ema  [S2-5m-filter][SOFI] CALL blocked — EMA9=16.3856 EMA21=16.4498 close=16.4050 VWAP=16.3598 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:00:10 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:00:10 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] CALL OK — EMA9=69.5104 > EMA21=69.1605 close=69.5800 > VWAP=69.3008 slopes both↑
+2026-07-28 08:00:10 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:00:10 INFO     app.services.strategy_ema  [S2-5m-filter][ORCL] CALL blocked — EMA9=116.6972 EMA21=116.8395 close=117.6400 VWAP=116.0475 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:00:10 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:00:11 INFO     app.services.strategy_ema  [S2-5m-filter][F] CALL blocked — EMA9=14.7501 EMA21=14.7276 close=14.7450 VWAP=14.7841 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 08:00:11 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:00:11 INFO     app.services.strategy_ema  [S2-5m-filter][COIN] CALL blocked — EMA9=163.5233 EMA21=163.6105 close=163.6000 VWAP=162.0521 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:00:11 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:00:11 INFO     app.services.strategy_ema  [S2-5m-filter][RIVN] CALL blocked — EMA9=16.0602 EMA21=16.1300 close=16.0850 VWAP=16.0318 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:00:11 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:00:11 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] CALL OK — EMA9=29.1646 > EMA21=29.0199 close=29.2200 > VWAP=29.0192 slopes both↑
+2026-07-28 08:00:11 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:00:12 INFO     app.services.strategy_ema  [S2-5m-filter][WMT] CALL blocked — EMA9=115.3072 EMA21=114.7122 close=115.0250 VWAP=115.0736 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 08:00:12 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:00:12 INFO     app.services.strategy_ema  [S2-5m-filter][JOBY] CALL blocked — EMA9=7.1276 EMA21=7.1400 close=7.1650 VWAP=7.1055 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:00:12 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:00:12 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] CALL OK — EMA9=364.6096 > EMA21=364.5233 close=364.7900 > VWAP=364.4583 slopes both↑
+2026-07-28 08:00:12 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:00:12 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:00:13 INFO     app.services.strategy_ema  [S2-5m-filter][FISV] CALL blocked — EMA9=53.6330 EMA21=53.3728 close=53.4700 VWAP=53.4191 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 08:00:13 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:00:13 INFO     app.services.strategy_ema  [S2-pullback][VTI] CALL pullback ✓ — pullback-bar low=364.8450 close=364.8700 EMA9=364.6096
+2026-07-28 08:00:13 INFO     app.services.strategy_ema  [S2-confirm][VTI] CALL confirmation failed — candle bearish/doji (open=364.8300 close=364.7900) prev_high=364.9500 ema9=364.6096 above_ema9=True
+2026-07-28 08:00:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:00:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:00:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:00:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:00:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:00:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.4100 close=196.6700 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:00:34 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:00:34 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:00:34 INFO     app.services.strategy_ema  [S2-pullback][VTI] CALL pullback ✓ — pullback-bar low=364.8450 close=364.8700 EMA9=364.6096
+2026-07-28 08:00:34 INFO     app.services.strategy_ema  [S2-confirm][VTI] CALL confirmation failed — candle bearish/doji (open=364.8300 close=364.7900) prev_high=364.9500 ema9=364.6096 above_ema9=True
+2026-07-28 08:00:34 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:00:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:00:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:00:35 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:01:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:01:04 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:01:04 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.5301 close=196.7700 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=False
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:01:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:01:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:01:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:01:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:01:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:01:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:01:06 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:01:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:01:06 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:01:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:01:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:01:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:01:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:01:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:01:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:01:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:01:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:01:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:01:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:01:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:01:08 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:01:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:01:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:01:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:01:08 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:01:08 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:01:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 08:01:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:01:09 INFO     app.services.strategy_ema  [S2-pullback][VTI] CALL pullback ✓ — pullback-bar low=364.7500 close=364.7900 EMA9=364.6096
+2026-07-28 08:01:09 INFO     app.services.strategy_ema  [S2-confirm][VTI] CALL confirmed ✓ — close=364.9900 > prev_high=364.9213 > ema9=364.6096
+2026-07-28 08:01:09 INFO     app.services.strategy_ema  [S2-volume][VTI] Volume below threshold — current=7846 < 80% of avg=10130 (20-bar) — skipping (thin order flow)
+2026-07-28 08:01:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:01:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:01:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:01:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.5301 close=196.7700 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=False
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:01:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:01:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:01:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:01:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:01:36 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:01:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:01:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:01:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:01:36 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:01:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:01:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:01:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:01:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:01:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:01:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:01:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:01:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:01:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:01:37 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:01:38 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:01:38 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:01:38 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:01:38 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:01:38 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:01:38 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 08:01:38 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:01:38 INFO     app.services.strategy_ema  [S2-pullback][VTI] CALL pullback ✓ — pullback-bar low=364.7500 close=364.7900 EMA9=364.6096
+2026-07-28 08:01:38 INFO     app.services.strategy_ema  [S2-confirm][VTI] CALL confirmed ✓ — close=364.9900 > prev_high=364.9213 > ema9=364.6096
+2026-07-28 08:01:38 INFO     app.services.strategy_ema  [S2-volume][VTI] Volume below threshold — current=7846 < 80% of avg=10130 (20-bar) — skipping (thin order flow)
+2026-07-28 08:02:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:02:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:02:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:02:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:02:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:02:04 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:02:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:02:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:02:04 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.7500 close=197.0000 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:02:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:02:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:02:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:02:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:02:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=False
+2026-07-28 08:02:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:02:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:02:05 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:02:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:02:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:02:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:02:06 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:02:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:02:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:02:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:02:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:02:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:02:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:02:08 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:02:08 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:02:08 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=364.7650 close=364.9900 EMA9=364.6096 (need low≤EMA9 or close within 0.3646)
+2026-07-28 08:02:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 08:02:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:02:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:02:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:02:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:02:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:02:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:02:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.7500 close=197.0000 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:02:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:02:34 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:02:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:02:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:02:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:02:36 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:02:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:02:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:02:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:02:36 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:02:36 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:02:36 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=364.7650 close=364.9900 EMA9=364.6096 (need low≤EMA9 or close within 0.3646)
+2026-07-28 08:02:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 08:02:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.7000 close=196.8300 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:03:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:03:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=False
+2026-07-28 08:03:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:03:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:03:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:03:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:03:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:03:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:03:05 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:03:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:03:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:03:06 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:03:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:03:06 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:03:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:03:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:03:07 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:03:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:03:07 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:03:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 08:03:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:03:07 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=364.8900 close=364.9837 EMA9=364.6096 (need low≤EMA9 or close within 0.3646)
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.7000 close=196.8300 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:03:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:03:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:03:35 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:03:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:03:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:03:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:03:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:03:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:03:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:03:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:03:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:03:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:03:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:03:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:03:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:03:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:03:36 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:03:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:03:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:03:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:03:37 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:03:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:03:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:03:37 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:03:37 DEBUG    app.services.strategy_ema  [S2-pullback][VTI] CALL — no pullback: pullback-bar low=364.8900 close=364.9837 EMA9=364.6096 (need low≤EMA9 or close within 0.3646)
+2026-07-28 08:03:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 08:03:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:04:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:04:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=False
+2026-07-28 08:04:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:04:05 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.6300 close=196.8100 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:04:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:04:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:04:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:04:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:04:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:04:05 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:04:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:04:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:04:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:04:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:04:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:04:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:04:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:04:06 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:04:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:04:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:04:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:04:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:04:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:04:07 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:04:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:04:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:04:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:04:07 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:04:07 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:04:07 INFO     app.services.strategy_ema  [S2-pullback][VTI] CALL pullback ✓ — pullback-bar low=364.7900 close=364.8400 EMA9=364.6096
+2026-07-28 08:04:07 INFO     app.services.strategy_ema  [S2-confirm][VTI] CALL confirmation failed — candle bearish/doji (open=364.8200 close=364.6200) prev_high=364.9800 ema9=364.6096 above_ema9=True
+2026-07-28 08:04:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 08:04:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 2 bars old — within 40-bar window ✓
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.6300 close=196.8100 EMA9=195.8605 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:04:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — PUT=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:04:35 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:04:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:04:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:04:36 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:04:36 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 1 bars old — within 40-bar window ✓
+2026-07-28 08:04:36 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:04:36 INFO     app.services.strategy_ema  [S2-pullback][VTI] CALL pullback ✓ — pullback-bar low=364.7900 close=364.8400 EMA9=364.6096
+2026-07-28 08:04:36 INFO     app.services.strategy_ema  [S2-confirm][VTI] CALL confirmation failed — candle bearish/doji (open=364.8200 close=364.6200) prev_high=364.9800 ema9=364.6096 above_ema9=True
+2026-07-28 08:04:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=False
+2026-07-28 08:04:37 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — PUT=False
+2026-07-28 08:05:03 INFO     app.services.strategy_ema  [S2-5m-filter][AMZN] CALL blocked — EMA9=229.0721 EMA21=229.6992 close=228.8300 VWAP=229.9769 EMA9_slope=↓ EMA21_slope=↓
+2026-07-28 08:05:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:05:03 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:05:03 INFO     app.services.strategy_ema  [S2-5m-filter][AAPL] CALL blocked — EMA9=337.6073 EMA21=337.4118 close=337.7650 VWAP=338.3867 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:05:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:05:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] CALL OK — EMA9=195.9224 > EMA21=195.5770 close=196.1700 > VWAP=194.6466 slopes both↑
+2026-07-28 08:05:03 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:05:04 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.5100 close=196.5500 EMA9=195.9224 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:05:04 INFO     app.services.strategy_ema  [S2-5m-filter][PLTR] CALL blocked — EMA9=120.3285 EMA21=121.8150 close=120.7400 VWAP=120.6905 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:05:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:05:04 INFO     app.services.strategy_ema  [S2-5m-filter][INTC] CALL blocked — EMA9=85.3847 EMA21=86.1094 close=85.5651 VWAP=85.2595 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:05:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:05:04 INFO     app.services.strategy_ema  [S2-5m-filter][ORCL] CALL blocked — EMA9=116.8698 EMA21=116.9050 close=117.5600 VWAP=116.0861 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:05:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:05:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] CALL OK — EMA9=109.8276 > EMA21=109.0208 close=110.0500 > VWAP=108.8231 slopes both↑
+2026-07-28 08:05:04 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:05:05 INFO     app.services.strategy_ema  [S2-5m-filter][NFLX] CALL blocked — EMA9=73.1546 EMA21=72.8412 close=72.8700 VWAP=73.1749 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 08:05:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:05:05 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=109.9801 close=110.0275 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:05:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] CALL OK — EMA9=130.7323 > EMA21=129.6750 close=131.0200 > VWAP=129.9807 slopes both↑
+2026-07-28 08:05:05 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:05:05 INFO     app.services.strategy_ema  [S2-5m-filter][SOFI] CALL blocked — EMA9=16.3835 EMA21=16.4430 close=16.3750 VWAP=16.3606 EMA9_slope=↓ EMA21_slope=↓
+2026-07-28 08:05:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:05:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] CALL OK — EMA9=69.5453 > EMA21=69.2082 close=69.6850 > VWAP=69.3127 slopes both↑
+2026-07-28 08:05:05 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:05:05 INFO     app.services.strategy_ema  [S2-5m-filter][RIVN] CALL blocked — EMA9=16.0911 EMA21=16.1377 close=16.2150 VWAP=16.0421 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:05:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:05:05 INFO     app.services.strategy_ema  [S2-5m-filter][COIN] CALL blocked — EMA9=163.3762 EMA21=163.5357 close=162.7880 VWAP=162.0698 EMA9_slope=↓ EMA21_slope=↓
+2026-07-28 08:05:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:05:06 INFO     app.services.strategy_ema  [S2-5m-filter][JOBY] CALL blocked — EMA9=7.1311 EMA21=7.1405 close=7.1450 VWAP=7.1081 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:05:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:05:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] CALL OK — EMA9=29.1737 > EMA21=29.0372 close=29.2100 > VWAP=29.0250 slopes both↑
+2026-07-28 08:05:06 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:05:06 INFO     app.services.strategy_ema  [S2-5m-filter][F] CALL blocked — EMA9=14.7500 EMA21=14.7296 close=14.7499 VWAP=14.7827 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 08:05:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:05:06 INFO     app.services.strategy_ema  [S2-5m-filter][VTI] CALL blocked — EMA9=364.5997 EMA21=364.5266 close=364.5600 VWAP=364.4650 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 08:05:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:05:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] CALL OK — EMA9=53.6544 > EMA21=53.4062 close=53.7400 > VWAP=53.4281 slopes both↑
+2026-07-28 08:05:07 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:05:07 INFO     app.services.strategy_ema  [S2-pullback][FISV] CALL pullback ✓ — pullback-bar low=53.6100 close=53.6750 EMA9=53.6544
+2026-07-28 08:05:07 INFO     app.services.strategy_ema  [S2-confirm][FISV] CALL confirmed ✓ — close=53.7400 > prev_high=53.6750 > ema9=53.6544
+2026-07-28 08:05:07 INFO     app.services.strategy_ema  [S2-volume][FISV] Volume below threshold — current=7032 < 80% of avg=9750 (20-bar) — skipping (thin order flow)
+2026-07-28 08:05:07 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:05:08 INFO     app.services.strategy_ema  [S2-5m-filter][WMT] CALL blocked — EMA9=115.2177 EMA21=114.7256 close=114.8600 VWAP=115.0680 EMA9_slope=↓ EMA21_slope=↑
+2026-07-28 08:05:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:05:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:05:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:05:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:05:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:05:33 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:05:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:05:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.5100 close=196.5500 EMA9=195.9224 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=109.9801 close=110.0275 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:05:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:05:35 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:05:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:05:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:05:35 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:05:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=False
+2026-07-28 08:05:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:05:36 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:05:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:05:36 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:05:36 INFO     app.services.strategy_ema  [S2-pullback][FISV] CALL pullback ✓ — pullback-bar low=53.6100 close=53.6750 EMA9=53.6544
+2026-07-28 08:05:36 INFO     app.services.strategy_ema  [S2-confirm][FISV] CALL confirmed ✓ — close=53.7400 > prev_high=53.6750 > ema9=53.6544
+2026-07-28 08:05:36 INFO     app.services.strategy_ema  [S2-volume][FISV] Volume below threshold — current=7032 < 80% of avg=9750 (20-bar) — skipping (thin order flow)
+2026-07-28 08:06:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:06:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:06:04 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:06:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:06:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:06:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:06:04 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:06:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:06:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:06:05 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.1200 close=196.1700 EMA9=195.9224 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:06:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:06:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:06:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:06:05 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:06:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:06:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:06:06 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0000 close=110.0500 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:06:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:06:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:06:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:06:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:06:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:06:06 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:06:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:06:07 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:06:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:06:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:06:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:06:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:06:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:06:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:06:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:06:08 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:06:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:06:08 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:06:09 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:06:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:06:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:06:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=False
+2026-07-28 08:06:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:06:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:06:09 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:06:10 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.6700 close=53.7400 EMA9=53.6544 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:06:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:06:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:06:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:06:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:06:33 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:06:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:06:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.1200 close=196.1700 EMA9=195.9224 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0000 close=110.0500 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:06:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:06:35 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:06:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:06:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:06:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:06:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:06:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:06:36 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:06:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:06:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:06:36 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:06:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=False
+2026-07-28 08:06:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:06:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:06:36 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:06:37 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.6700 close=53.7400 EMA9=53.6544 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:07:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:07:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:07:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:07:03 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:07:04 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.0700 close=196.4200 EMA9=195.9224 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0500 close=110.3200 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:07:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:07:05 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:07:05 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:07:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:07:06 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:07:06 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=False
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:07:06 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.7200 close=53.7350 EMA9=53.6544 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:07:34 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.0700 close=196.4200 EMA9=195.9224 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:07:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.0500 close=110.3200 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:07:35 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:07:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:07:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:07:36 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=False
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:07:36 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:07:36 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:07:37 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.7200 close=53.7350 EMA9=53.6544 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:08:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:08:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:08:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:08:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:08:03 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:08:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:08:03 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:08:03 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.3400 close=196.3950 EMA9=195.9224 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:08:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:08:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:08:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:08:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:08:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:08:04 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:08:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:08:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.3300 close=110.5350 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:08:05 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:08:05 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:08:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:08:06 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=False
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:08:06 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:08:06 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:08:07 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.7100 close=53.7700 EMA9=53.6544 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:08:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:08:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:08:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:08:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:08:33 DEBUG    app.services.strategy_ema  [S2-pullback][NVDA] CALL — no pullback: pullback-bar low=196.3400 close=196.3950 EMA9=195.9224 (need low≤EMA9 or close within 0.1959)
+2026-07-28 08:08:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:08:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:08:33 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.3300 close=110.5350 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:08:34 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:08:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:08:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:08:35 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=False
+2026-07-28 08:08:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:08:35 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:08:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:08:36 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:08:36 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.7100 close=53.7700 EMA9=53.6544 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:09:04 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:09:04 INFO     app.services.strategy_ema  [S2-pullback][NVDA] CALL pullback ✓ — pullback-bar low=195.8750 close=196.1300 EMA9=195.9224
+2026-07-28 08:09:04 INFO     app.services.strategy_ema  [S2-confirm][NVDA] CALL confirmation failed — candle bearish/doji (open=196.1200 close=196.0000) prev_high=196.4100 ema9=195.9224 above_ema9=True
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:09:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.3707 close=110.4200 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:09:05 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:09:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:09:05 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:09:06 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=False
+2026-07-28 08:09:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:09:07 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:09:07 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:09:07 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:09:07 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.7500 close=53.8300 EMA9=53.6544 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:09:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — CALL=False
+2026-07-28 08:09:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=True
+2026-07-28 08:09:33 INFO     app.services.scheduler  [S2][AMZN] PUT entries disabled (s2_puts_enabled=0) — skip
+2026-07-28 08:09:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:09:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:09:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=False
+2026-07-28 08:09:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — PUT=False
+2026-07-28 08:09:33 INFO     app.services.strategy_ema  [S2-pullback][NVDA] CALL pullback ✓ — pullback-bar low=195.8750 close=196.1300 EMA9=195.9224
+2026-07-28 08:09:33 INFO     app.services.strategy_ema  [S2-confirm][NVDA] CALL confirmation failed — candle bearish/doji (open=196.1200 close=196.0000) prev_high=196.4100 ema9=195.9224 above_ema9=True
+2026-07-28 08:09:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:09:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — CALL=False
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 17 bars old — within 40-bar window ✓
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=False
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — PUT=False
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.3707 close=110.4200 EMA9=109.8276 (need low≤EMA9 or close within 0.1098)
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:09:34 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:09:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:09:35 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:09:35 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — PUT=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:09:35 INFO     app.services.scheduler  [energy-gate][FIG] Symbol not in play — true range 48% of its own ATR(14) (min 50%) — blocking entry
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=False
+2026-07-28 08:09:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — PUT=False
+2026-07-28 08:09:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:09:36 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:09:36 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.7500 close=53.8300 EMA9=53.6544 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:10:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] CALL OK — EMA9=337.8539 > EMA21=337.5416 close=338.8400 > VWAP=338.3899 slopes both↑
+2026-07-28 08:10:03 INFO     app.services.strategy_ema  [S2-freshness][AAPL] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:04 INFO     app.services.strategy_ema  [S2-5m-filter][INTC] CALL blocked — EMA9=85.4122 EMA21=86.0560 close=85.5220 VWAP=85.2721 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:10:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:10:09 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] CALL OK — EMA9=196.0159 > EMA21=195.6509 close=196.3900 > VWAP=194.6919 slopes both↑
+2026-07-28 08:10:09 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 4 bars old — within 40-bar window ✓
+2026-07-28 08:10:09 INFO     app.services.strategy_ema  [S2-pullback][NVDA] CALL pullback ✓ — pullback-bar low=195.8600 close=196.0000 EMA9=196.0159
+2026-07-28 08:10:09 INFO     app.services.strategy_ema  [S2-confirm][NVDA] CALL confirmed ✓ — close=196.3900 > prev_high=196.2700 > ema9=196.0159
+2026-07-28 08:10:10 INFO     app.services.scheduler  [S2][NVDA] Limit order 138899089 placed: NVDA260729C00195000 x1 @ $3.33
+2026-07-28 08:10:11 WARNING  app.services.tradier  get_intraday_bars(AMZN): ReadTimeout — skipping this cycle
+2026-07-28 08:10:11 WARNING  app.services.scheduler  [S2][AMZN] Missing 5-min bars — skipping
+2026-07-28 08:10:12 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] CALL OK — EMA9=109.9921 > EMA21=109.1689 close=110.6500 > VWAP=108.8697 slopes both↑
+2026-07-28 08:10:12 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:10:12 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.3700 close=110.4200 EMA9=109.9921 (need low≤EMA9 or close within 0.1100)
+2026-07-28 08:10:12 INFO     app.services.scheduler  [S2][NVDA] Limit order 138899089 REJECTED — aborting
+2026-07-28 08:10:12 WARNING  app.services.tradier  get_intraday_bars(PLTR): ReadTimeout — skipping this cycle
+2026-07-28 08:10:13 INFO     app.services.strategy_ema  [S2-5m-filter][NFLX] CALL blocked — EMA9=73.0717 EMA21=72.8320 close=72.7400 VWAP=73.1606 EMA9_slope=↓ EMA21_slope=↓
+2026-07-28 08:10:13 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:10:13 WARNING  app.services.scheduler  [S2][PLTR] Missing 5-min bars — skipping
+2026-07-28 08:10:13 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] CALL OK — EMA9=130.8558 > EMA21=129.8273 close=131.3500 > VWAP=130.0102 slopes both↑
+2026-07-28 08:10:13 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:14 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] CALL OK — EMA9=69.5973 > EMA21=69.2625 close=69.8050 > VWAP=69.3246 slopes both↑
+2026-07-28 08:10:14 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:14 INFO     app.services.strategy_ema  [S2-5m-filter][SOFI] CALL blocked — EMA9=16.3918 EMA21=16.4414 close=16.4250 VWAP=16.3619 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:10:14 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:10:15 INFO     app.services.strategy_ema  [S2-5m-filter][RIVN] CALL blocked — EMA9=16.1209 EMA21=16.1470 close=16.2400 VWAP=16.0458 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:10:15 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:10:15 INFO     app.services.strategy_ema  [S2-5m-filter][COIN] CALL blocked — EMA9=163.3390 EMA21=163.5043 close=163.1900 VWAP=162.0882 EMA9_slope=↓ EMA21_slope=↓
+2026-07-28 08:10:15 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:10:16 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] CALL OK — EMA9=14.7570 > EMA21=14.7346 close=14.7850 > VWAP=14.7819 slopes both↑
+2026-07-28 08:10:16 INFO     app.services.strategy_ema  [S2-freshness][F] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:16 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] CALL OK — EMA9=29.1829 > EMA21=29.0538 close=29.2200 > VWAP=29.0296 slopes both↑
+2026-07-28 08:10:16 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:17 INFO     app.services.strategy_ema  [S2-5m-filter][JOBY] CALL blocked — EMA9=7.1339 EMA21=7.1409 close=7.1450 VWAP=7.1112 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:10:17 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:10:17 INFO     app.services.strategy_ema  [S2-5m-filter][WMT] CALL blocked — EMA9=115.1062 EMA21=114.7197 close=114.6600 VWAP=115.0608 EMA9_slope=↓ EMA21_slope=↓
+2026-07-28 08:10:17 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:10:18 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] CALL OK — EMA9=364.6597 > EMA21=364.5605 close=364.9000 > VWAP=364.4725 slopes both↑
+2026-07-28 08:10:18 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:10:18 INFO     app.services.strategy_ema  [S2-pullback][VTI] CALL pullback ✓ — pullback-bar low=364.6100 close=364.6500 EMA9=364.6597
+2026-07-28 08:10:18 INFO     app.services.strategy_ema  [S2-confirm][VTI] CALL confirmed ✓ — close=364.9000 > prev_high=364.7600 > ema9=364.6597
+2026-07-28 08:10:18 DEBUG    app.services.strategy_ema  [S2-5m-filter][FIG] CALL OK — EMA9=23.3467 > EMA21=23.1648 close=23.5700 > VWAP=23.0773 slopes both↑
+2026-07-28 08:10:18 INFO     app.services.strategy_ema  [S2-freshness][FIG] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:18 INFO     app.services.strategy_ema  [S2-spread][VTI] Spread too wide — bid=5.40 ask=7.10 spread=27.2% > max 12.0%
+2026-07-28 08:10:18 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] CALL OK — EMA9=117.0378 > EMA21=116.9782 close=117.7100 > VWAP=116.1221 slopes both↑
+2026-07-28 08:10:18 DEBUG    app.services.strategy_ema  [S2-freshness][ORCL] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 08:10:18 DEBUG    app.services.strategy_ema  [S2-pullback][ORCL] CALL — no pullback: pullback-bar low=117.2950 close=117.4200 EMA9=117.0378 (need low≤EMA9 or close within 0.1170)
+2026-07-28 08:10:18 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] CALL OK — EMA9=53.6895 > EMA21=53.4447 close=53.8300 > VWAP=53.4407 slopes both↑
+2026-07-28 08:10:18 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 19 bars old — within 40-bar window ✓
+2026-07-28 08:10:19 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.8000 close=53.8050 EMA9=53.6895 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:10:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — CALL=True
+2026-07-28 08:10:33 DEBUG    app.services.strategy_ema  [S2-freshness][NVDA] CALL cross 4 bars old — within 40-bar window ✓
+2026-07-28 08:10:33 INFO     app.services.strategy_ema  [S2-pullback][NVDA] CALL pullback ✓ — pullback-bar low=195.8600 close=196.0000 EMA9=196.0159
+2026-07-28 08:10:33 INFO     app.services.strategy_ema  [S2-confirm][NVDA] CALL confirmed ✓ — close=196.3900 > prev_high=196.2700 > ema9=196.0159
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AAPL] Using cached trend — CALL=True
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-freshness][AAPL] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:34 INFO     app.services.scheduler  [S2][NVDA] Limit order 138899375 placed: NVDA260729C00195000 x1 @ $3.20
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-5m-filter][AMZN] CALL blocked — EMA9=229.0788 EMA21=229.6452 close=229.1055 VWAP=229.9413 EMA9_slope=↑ EMA21_slope=↓
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][AMZN] Using cached trend — PUT=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — CALL=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][INTC] Using cached trend — PUT=False
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-5m-filter][PLTR] CALL blocked — EMA9=120.7288 EMA21=121.8618 close=122.3300 VWAP=120.7236 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][PLTR] Using cached trend — PUT=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NOW] Using cached trend — CALL=True
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-freshness][NOW] CALL cross 18 bars old — within 40-bar window ✓
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-pullback][NOW] CALL — no pullback: pullback-bar low=110.3700 close=110.4200 EMA9=109.9921 (need low≤EMA9 or close within 0.1100)
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][ORCL] Using cached trend — CALL=True
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-freshness][ORCL] CALL cross 0 bars old — within 40-bar window ✓
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-pullback][ORCL] CALL — no pullback: pullback-bar low=117.2950 close=117.4200 EMA9=117.0378 (need low≤EMA9 or close within 0.1170)
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — CALL=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][NFLX] Using cached trend — PUT=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SHOP] Using cached trend — CALL=True
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-freshness][SHOP] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — CALL=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][SOFI] Using cached trend — PUT=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][UBER] Using cached trend — CALL=True
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-freshness][UBER] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — CALL=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][COIN] Using cached trend — PUT=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — CALL=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][RIVN] Using cached trend — PUT=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][F] Using cached trend — CALL=True
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-freshness][F] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — CALL=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][JOBY] Using cached trend — PUT=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][CELH] Using cached trend — CALL=True
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-freshness][CELH] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — CALL=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][WMT] Using cached trend — PUT=False
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][VTI] Using cached trend — CALL=True
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-freshness][VTI] CALL cross 3 bars old — within 40-bar window ✓
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-pullback][VTI] CALL pullback ✓ — pullback-bar low=364.6100 close=364.6500 EMA9=364.6597
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-confirm][VTI] CALL confirmed ✓ — close=364.9000 > prev_high=364.7600 > ema9=364.6597
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][FIG] Using cached trend — CALL=True
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-freshness][FIG] No CALL EMA cross found in TODAY's session — trend predates today, blocking
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-5m-filter][FISV] Using cached trend — CALL=True
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-freshness][FISV] CALL cross 19 bars old — within 40-bar window ✓
+2026-07-28 08:10:34 DEBUG    app.services.strategy_ema  [S2-pullback][FISV] CALL — no pullback: pullback-bar low=53.8000 close=53.8050 EMA9=53.6895 (need low≤EMA9 or close within 0.0537)
+2026-07-28 08:10:34 INFO     app.services.strategy_ema  [S2-spread][VTI] Spread too wide — bid=5.40 ask=7.10 spread=27.2% > max 12.0%
+2026-07-28 08:10:36 INFO     app.services.scheduler  [Primary] [S2][NVDA] Trade OPENED: CALL NVDA260729C00195000 x1 @ $3.17  SL=2.73  TP=3.74
+2026-07-28 08:11:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:11:06 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 0.5 min into trade (min_hold=10)
+2026-07-28 08:11:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:11:35 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 1.0 min into trade (min_hold=10)
+2026-07-28 08:12:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:12:06 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 1.5 min into trade (min_hold=10)
+2026-07-28 08:12:33 INFO     app.services.scheduler  [CRM] Trailing stop raised: $3.23 → $4.05 (option +16.0% — entry $3.75  current $4.35)
+2026-07-28 08:12:33 INFO     app.services.scheduler  [CRM] Broker disaster stop 138890292 raised to $3.81 (bot stop $4.05)
+2026-07-28 08:12:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:12:36 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 2.0 min into trade (min_hold=10)
+2026-07-28 08:13:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:13:05 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 2.5 min into trade (min_hold=10)
+2026-07-28 08:13:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:13:36 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 3.0 min into trade (min_hold=10)
+2026-07-28 08:14:04 INFO     app.services.scheduler  [CRM] RUNNER mode activated — TP $4.42 waived on momentum, trailing 4% below mid (stop now $4.28)
+2026-07-28 08:14:06 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:14:06 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 3.5 min into trade (min_hold=10)
+2026-07-28 08:14:34 INFO     app.services.scheduler  [GOOGL] RUNNER mode activated — TP $4.68 waived on momentum, trailing 4% below mid (stop now $4.58)
+2026-07-28 08:14:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:14:35 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 4.0 min into trade (min_hold=10)
+2026-07-28 08:15:08 INFO     app.services.scheduler  [GOOGL] Trailing stop raised: $4.58 → $4.70 (option +22.8% — entry $3.97  current $4.88)
+2026-07-28 08:15:08 INFO     app.services.scheduler  [GOOGL] Broker disaster stop 138890396 raised to $4.42 (bot stop $4.70)
+2026-07-28 08:15:10 INFO     app.services.strategy_ema  [S2-5m-filter][NVDA] PUT blocked — EMA9=196.1089 EMA21=195.7263 close=196.4810 VWAP=194.7373 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:15:11 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 4.6 min into trade (min_hold=10)
+2026-07-28 08:15:33 INFO     app.services.scheduler  [CRM] Trailing stop raised: $4.28 → $4.39 (option +21.3% — entry $3.75  current $4.55)
+2026-07-28 08:15:33 INFO     app.services.scheduler  [CRM] Broker disaster stop 138890292 raised to $4.13 (bot stop $4.39)
+2026-07-28 08:15:34 INFO     app.services.scheduler  [GOOGL] Trailing stop raised: $4.70 → $4.73 (option +23.4% — entry $3.97  current $4.90)
+2026-07-28 08:15:35 INFO     app.services.scheduler  [GOOGL] Broker disaster stop 138890396 raised to $4.45 (bot stop $4.73)
+2026-07-28 08:15:35 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:15:35 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 5.0 min into trade (min_hold=10)
+2026-07-28 08:16:05 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:16:06 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 5.5 min into trade (min_hold=10)
+2026-07-28 08:16:34 INFO     app.services.scheduler  [GOOGL] Trailing stop raised: $4.73 → $5.02 (option +31.0% — entry $3.97  current $5.20)
+2026-07-28 08:16:35 INFO     app.services.scheduler  [GOOGL] Broker disaster stop 138890396 raised to $4.72 (bot stop $5.02)
+2026-07-28 08:16:36 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:16:36 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 6.0 min into trade (min_hold=10)
+2026-07-28 08:17:04 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:17:04 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 6.5 min into trade (min_hold=10)
+2026-07-28 08:17:34 INFO     app.services.scheduler  [CRM] Trade 201: exit limit placed at $4.25 (RUNNER, mid) — waiting up to 12s
+2026-07-28 08:17:48 INFO     app.services.scheduler  [CRM] Trade 201 exit: actual fill $4.15 vs trigger quote $4.20 (diff -0.05 — using fill price for P&L)
+2026-07-28 08:17:48 INFO     app.services.scheduler  [CRM] Trade 201 CLOSED via RUNNER @ $4.15  PnL=$40.00
+2026-07-28 08:17:48 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:17:49 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 7.2 min into trade (min_hold=10)
+2026-07-28 08:18:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:18:03 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 7.5 min into trade (min_hold=10)
+2026-07-28 08:18:03 INFO     app.services.scheduler  [Primary] [adaptive-band] QQQ → band=0.80% (normal (adaptive off)) | regime=BULLISH
+2026-07-28 08:18:03 INFO     app.services.scheduler  [GOOGL] Cooldown active — last MANUAL exit at 15:16 UTC (30-min window)
+2026-07-28 08:18:04 INFO     app.services.strategy  [AAPL] [L1] CALL rejected — price 339.32 is only 0.244% from VWAP 338.50 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:18:04 INFO     app.services.strategy  [AMZN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:18:05 INFO     app.services.strategy  [NOW] [L1] CALL rejected — price 111.14 is 1.906% from VWAP 109.06 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:18:05 INFO     app.services.strategy  [INTC] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:18:05 INFO     app.services.strategy  [PLTR] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:18:06 INFO     app.services.strategy  [ORCL] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:18:06 INFO     app.services.strategy  [NFLX] [L1] CALL rejected — price 73.05 is BELOW VWAP 73.16 (wrong side for bullish bounce)
+2026-07-28 08:18:06 INFO     app.services.strategy  [SHOP] [L1] CALL rejected — price 132.19 is 1.540% from VWAP 130.18 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:18:06 INFO     app.services.strategy  [CRM] [L1] CALL rejected — price 183.26 is 1.260% from VWAP 180.98 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:18:06 INFO     app.services.strategy  [IWM] [L1] EMA trend 'bullish' not yet confirmed for 2 consecutive bars — skipping
+2026-07-28 08:18:07 INFO     app.services.strategy  [SOFI] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:18:07 INFO     app.services.strategy  [UBER] [L1] CALL rejected — price 69.93 is 0.836% from VWAP 69.35 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:18:07 INFO     app.services.strategy  [F] [L1] Signal: CALL  price=14.87  vwap=14.79  distance=0.523%  trend=bullish
+2026-07-28 08:18:07 INFO     app.services.strategy  [F] [L3] Momentum NOT confirmed for CALL — last bar close=14.87 open=14.87 prev_close=14.86 (green=False rising=True). Waiting for upward momentum.
+2026-07-28 08:18:08 INFO     app.services.strategy  [CELH] [L1] CALL rejected — price 29.38 is 1.130% from VWAP 29.05 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:18:08 INFO     app.services.strategy  [WMT] [L1] CALL rejected — price 114.89 is BELOW VWAP 115.06 (wrong side for bullish bounce)
+2026-07-28 08:18:08 INFO     app.services.strategy  [COIN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:18:08 INFO     app.services.strategy  [VTI] [L1] CALL rejected — price 365.50 is only 0.260% from VWAP 364.55 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:18:08 INFO     app.services.strategy  [FISV] [L1] CALL rejected — price 54.08 is 1.122% from VWAP 53.47 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:18:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:18:34 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 8.0 min into trade (min_hold=10)
+2026-07-28 08:19:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:19:04 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 8.5 min into trade (min_hold=10)
+2026-07-28 08:19:04 INFO     app.services.scheduler  [Primary] [adaptive-band] QQQ → band=0.80% (normal (adaptive off)) | regime=BULLISH
+2026-07-28 08:19:04 INFO     app.services.scheduler  [GOOGL] Cooldown active — last MANUAL exit at 15:16 UTC (30-min window)
+2026-07-28 08:19:04 INFO     app.services.strategy  [AMZN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:19:04 INFO     app.services.strategy  [PLTR] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:19:04 INFO     app.services.strategy  [AAPL] [L1] CALL rejected — price 339.51 is only 0.297% from VWAP 338.50 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:19:05 INFO     app.services.strategy  [NOW] [L1] CALL rejected — price 111.40 is 2.133% from VWAP 109.07 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:19:05 INFO     app.services.strategy  [ORCL] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:19:05 INFO     app.services.strategy  [INTC] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:19:05 INFO     app.services.strategy  [NFLX] [L1] CALL rejected — price 73.06 is BELOW VWAP 73.16 (wrong side for bullish bounce)
+2026-07-28 08:19:05 INFO     app.services.strategy  [SHOP] [L1] CALL rejected — price 132.47 is 1.747% from VWAP 130.20 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:19:06 INFO     app.services.strategy  [IWM] [L1] EMA trend 'bullish' not yet confirmed for 2 consecutive bars — skipping
+2026-07-28 08:19:06 INFO     app.services.strategy  [CRM] [L1] CALL rejected — price 183.52 is 1.396% from VWAP 180.99 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:19:06 INFO     app.services.strategy  [SOFI] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:19:06 INFO     app.services.strategy  [UBER] [L1] CALL rejected — price 70.03 is 0.966% from VWAP 69.36 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:19:06 INFO     app.services.strategy  [F] [L1] Signal: CALL  price=14.86  vwap=14.79  distance=0.488%  trend=bullish
+2026-07-28 08:19:06 INFO     app.services.strategy  [L2] Directional bounce NOT confirmed for CALL — closes not rising. Last closes: [14.87]
+2026-07-28 08:19:07 INFO     app.services.strategy  [WMT] [L1] CALL rejected — price 114.74 is BELOW VWAP 115.06 (wrong side for bullish bounce)
+2026-07-28 08:19:07 INFO     app.services.strategy  [COIN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:19:07 INFO     app.services.strategy  [CELH] [L1] CALL rejected — price 29.42 is 1.259% from VWAP 29.05 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:19:07 INFO     app.services.strategy  [VTI] [L1] CALL rejected — price 365.71 is only 0.314% from VWAP 364.57 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:19:08 INFO     app.services.strategy  [FISV] [L1] CALL rejected — price 54.12 is 1.200% from VWAP 53.48 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:19:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:19:34 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 9.0 min into trade (min_hold=10)
+2026-07-28 08:20:03 INFO     app.services.strategy_ema  [S2-5m-filter][NVDA] PUT blocked — EMA9=196.3411 EMA21=195.8667 close=197.2700 VWAP=194.8013 EMA9_slope=↑ EMA21_slope=↑
+2026-07-28 08:20:04 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 9.5 min into trade (min_hold=10)
+2026-07-28 08:20:04 INFO     app.services.strategy_ema  [S2-exit] Breakeven stop raised to 3.42 (entry 3.17 + 8% lock, gain=16.7%)
+2026-07-28 08:20:04 INFO     app.services.scheduler  [Primary] [adaptive-band] QQQ → band=0.80% (normal (adaptive off)) | regime=BULLISH
+2026-07-28 08:20:04 INFO     app.services.scheduler  [S2][NVDA] Trade 203 stop raised: $2.73 → $3.42
+2026-07-28 08:20:04 INFO     app.services.scheduler  [GOOGL] Cooldown active — last MANUAL exit at 15:16 UTC (30-min window)
+2026-07-28 08:20:04 INFO     app.services.strategy  [AMZN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:20:05 INFO     app.services.strategy  [INTC] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:20:05 INFO     app.services.strategy  [AAPL] [L1] CALL rejected — price 339.33 is only 0.243% from VWAP 338.51 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:20:05 INFO     app.services.strategy  [PLTR] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:20:06 INFO     app.services.strategy  [ORCL] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:20:06 INFO     app.services.strategy  [NFLX] [L1] CALL rejected — price 73.09 is BELOW VWAP 73.16 (wrong side for bullish bounce)
+2026-07-28 08:20:06 INFO     app.services.strategy  [NOW] [L1] CALL rejected — price 111.44 is 2.160% from VWAP 109.08 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:20:06 INFO     app.services.strategy  [SHOP] [L1] CALL rejected — price 132.65 is 1.866% from VWAP 130.22 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:20:07 INFO     app.services.strategy  [IWM] [L1] EMA trend 'bullish' not yet confirmed for 2 consecutive bars — skipping
+2026-07-28 08:20:07 INFO     app.services.strategy  [SOFI] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:20:07 INFO     app.services.strategy  [CRM] [L1] CALL rejected — price 183.60 is 1.429% from VWAP 181.01 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:20:07 INFO     app.services.strategy  [UBER] [L1] CALL rejected — price 70.14 is 1.106% from VWAP 69.37 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:20:08 INFO     app.services.strategy  [CELH] [L1] CALL rejected — price 29.45 is 1.372% from VWAP 29.06 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:20:08 INFO     app.services.strategy  [COIN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:20:08 INFO     app.services.strategy  [F] [L1] Signal: CALL  price=14.87  vwap=14.79  distance=0.550%  trend=bullish
+2026-07-28 08:20:08 INFO     app.services.scheduler  [F] All Layers 1–5 passed: CALL  price=14.87  vwap=14.79
+2026-07-28 08:20:08 INFO     app.services.scheduler  [F] Contract too cheap — mid $0.40 < min premium $1.00 (penny quantization / spread noise) — skipping
+2026-07-28 08:20:09 INFO     app.services.strategy  [VTI] [L1] CALL rejected — price 365.84 is only 0.347% from VWAP 364.58 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:20:09 INFO     app.services.strategy  [FISV] [L1] CALL rejected — price 54.12 is 1.181% from VWAP 53.48 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:20:09 INFO     app.services.strategy  [WMT] [L1] CALL rejected — price 114.79 is BELOW VWAP 115.05 (wrong side for bullish bounce)
+2026-07-28 08:20:33 INFO     app.services.scheduler  [S2][NVDA] RUNNER mode activated — TP $3.74 waived on momentum, trailing 4% below bid (stop now $3.62)
+2026-07-28 08:20:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:20:33 DEBUG    app.services.strategy_ema  [S2-exit] Hard stop suppressed — 10.0 min into trade (min_hold=10)
+2026-07-28 08:21:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:21:04 INFO     app.services.scheduler  [Primary] [adaptive-band] QQQ → band=0.80% (normal (adaptive off)) | regime=BULLISH
+2026-07-28 08:21:04 INFO     app.services.scheduler  [GOOGL] Cooldown active — last MANUAL exit at 15:16 UTC (30-min window)
+2026-07-28 08:21:04 INFO     app.services.strategy  [AAPL] [L1] CALL rejected — price 339.28 is only 0.227% from VWAP 338.51 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:21:05 INFO     app.services.strategy  [PLTR] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:21:05 INFO     app.services.strategy  [INTC] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:21:05 INFO     app.services.strategy  [AMZN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:21:06 INFO     app.services.strategy  [NFLX] [L1] CALL rejected — price 73.15 is BELOW VWAP 73.16 (wrong side for bullish bounce)
+2026-07-28 08:21:06 INFO     app.services.strategy  [NOW] [L1] CALL rejected — price 111.41 is 2.125% from VWAP 109.09 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:21:06 INFO     app.services.strategy  [ORCL] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:21:06 INFO     app.services.strategy  [SHOP] [L1] CALL rejected — price 132.76 is 1.932% from VWAP 130.24 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:21:06 INFO     app.services.strategy  [IWM] [L1] EMA trend 'bullish' not yet confirmed for 2 consecutive bars — skipping
+2026-07-28 08:21:07 INFO     app.services.strategy  [CRM] [L1] CALL rejected — price 183.91 is 1.583% from VWAP 181.04 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:21:07 INFO     app.services.strategy  [UBER] [L1] CALL rejected — price 70.11 is 1.048% from VWAP 69.38 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:21:07 INFO     app.services.strategy  [SOFI] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:21:08 INFO     app.services.strategy  [COIN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:21:08 INFO     app.services.strategy  [F] [L1] Signal: CALL  price=14.89  vwap=14.79  distance=0.674%  trend=bullish
+2026-07-28 08:21:08 INFO     app.services.scheduler  [F] All Layers 1–5 passed: CALL  price=14.89  vwap=14.79
+2026-07-28 08:21:08 INFO     app.services.strategy  [CELH] [L1] CALL rejected — price 29.44 is 1.315% from VWAP 29.06 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:21:08 INFO     app.services.strategy  [WMT] [L1] CALL rejected — price 114.79 is BELOW VWAP 115.05 (wrong side for bullish bounce)
+2026-07-28 08:21:08 INFO     app.services.scheduler  [F] Contract too cheap — mid $0.41 < min premium $1.00 (penny quantization / spread noise) — skipping
+2026-07-28 08:21:08 INFO     app.services.strategy  [VTI] [L1] CALL rejected — price 366.02 is only 0.394% from VWAP 364.58 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:21:09 INFO     app.services.strategy  [FISV] [L1] CALL rejected — price 54.11 is 1.167% from VWAP 53.49 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:21:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:22:03 INFO     app.services.scheduler  [Primary] [adaptive-band] QQQ → band=0.80% (normal (adaptive off)) | regime=BULLISH
+2026-07-28 08:22:03 INFO     app.services.scheduler  [GOOGL] Cooldown active — last MANUAL exit at 15:16 UTC (30-min window)
+2026-07-28 08:22:03 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:22:04 INFO     app.services.strategy  [AAPL] [L1] CALL rejected — price 339.08 is only 0.167% from VWAP 338.51 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:22:04 INFO     app.services.strategy  [AMZN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:22:04 INFO     app.services.strategy  [INTC] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:22:05 INFO     app.services.strategy  [PLTR] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:22:05 INFO     app.services.strategy  [NOW] [L1] CALL rejected — price 111.68 is 2.362% from VWAP 109.10 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:22:05 INFO     app.services.strategy  [ORCL] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:22:05 INFO     app.services.strategy  [NFLX] [L1] CALL rejected — price 73.22 is only 0.088% from VWAP 73.16 (min clearance 0.40% — AT RISK, no directional conviction)
+2026-07-28 08:22:05 INFO     app.services.strategy  [SHOP] [L1] CALL rejected — price 132.82 is 1.970% from VWAP 130.25 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:22:06 INFO     app.services.strategy  [IWM] [L1] EMA trend 'bullish' not yet confirmed for 2 consecutive bars — skipping
+2026-07-28 08:22:06 INFO     app.services.strategy  [CRM] [L1] CALL rejected — price 184.06 is 1.652% from VWAP 181.07 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:22:06 INFO     app.services.strategy  [UBER] [L1] CALL rejected — price 70.06 is 0.960% from VWAP 69.39 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:22:06 INFO     app.services.strategy  [SOFI] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:22:06 INFO     app.services.strategy  [COIN] [L1] PUT entries disabled (s1_puts_enabled=0) — skip
+2026-07-28 08:22:07 INFO     app.services.strategy  [WMT] [L1] CALL rejected — price 114.72 is BELOW VWAP 115.05 (wrong side for bullish bounce)
+2026-07-28 08:22:07 INFO     app.services.strategy  [F] [L1] Signal: CALL  price=14.89  vwap=14.79  distance=0.702%  trend=bullish
+2026-07-28 08:22:07 INFO     app.services.strategy  [L2] Directional bounce NOT confirmed for CALL — closes not rising. Last closes: [14.89]
+2026-07-28 08:22:07 INFO     app.services.strategy  [CELH] [L1] CALL rejected — price 29.43 is 1.291% from VWAP 29.06 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:22:07 INFO     app.services.strategy  [FISV] [L1] CALL rejected — price 54.12 is 1.181% from VWAP 53.49 (band=0.80% — waiting for pullback to VWAP)
+2026-07-28 08:22:07 INFO     app.services.strategy  [VTI] [L1] Signal: CALL  price=366.14  vwap=364.60  distance=0.423%  trend=bullish
+2026-07-28 08:22:07 INFO     app.services.scheduler  [VTI] All Layers 1–5 passed: CALL  price=366.14  vwap=364.60
+2026-07-28 08:22:07 INFO     app.services.strategy_ema  [S2-spread][VTI] Spread too wide — bid=6.00 ask=7.00 spread=15.4% > max 12.0%
+2026-07-28 08:22:33 DEBUG    app.services.strategy_ema  [S2-5m-filter][NVDA] Using cached trend — PUT=False
+2026-07-28 08:22:34 INFO     app.services.strategy_ema  [S2-exit] TRAILING_STOP — bid 3.70 ≤ stop 3.72 (entry 3.17, mid 3.75)
+2026-07-28 08:22:34 INFO     app.services.scheduler  [NVDA] Trade 203: exit limit placed at $3.75 (RUNNER, mid) — waiting up to 12s
+2026-07-28 08:22:36 INFO     app.services.scheduler  [NVDA] Trade 203 was already closed at the broker — reconciled as MANUAL @ $3.77 (actual fill)
+2026-07-28 08:22:36 INFO     app.services.scheduler  [NVDA] Trade 203: exit limit 138909486 filled
+2026-07-28 08:22:37 INFO     app.services.scheduler  [NVDA] Trade 203 exit: actual fill $3.77 vs trigger quote $3.70 (diff +0.07 — using fill price for P&L)
+2026-07-28 08:22:37 INFO     app.services.scheduler  [NVDA] Trade 203 CLOSED via RUNNER @ $3.77  PnL=$60.00
+INFO:     Started server process [1178]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

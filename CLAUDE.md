@@ -3,7 +3,7 @@
 > **Read this first.** This file onboards a fresh AI session (any model) into the full
 > project context. It is the distilled memory of an intensive July 2026 collaboration
 > that redesigned this bot. Keep it updated when major changes land.
-> Last updated: **2026-07-20** (evening, after the ghost-trade post-mortem).
+> Last updated: **2026-07-25** (multi-account support built; see §6c).
 
 ---
 
@@ -49,6 +49,16 @@ fat losers) and several measurement bugs. Everything below was built and tested 
   Fallback to percentage levels only when delta missing.
 - **Chop gate** (shared): block ALL entries while QQQ **true range incl. overnight gap**
   < 50% of its ATR(14). Gap-aware since Jul 9 (plain range misread gap-and-go days).
+- **L5 QQQ regime gate is S1-ONLY — this is INTENTIONAL, do not "fix" it.**
+  S1 blocks a CALL when QQQ is below its VWAP; S2 has no such gate.  So the
+  same symbol can be refused by S1 and taken by S2 seconds later (live
+  example Jul 27: S1 blocked ORCL at 07:51:05 on `[L5] Regime gate: QQQ
+  BEARISH`, S2 opened it at 07:51:07).  The asymmetry is deliberate — S1 is a
+  pullback-continuation setup that leans on broad-market drift, so a hostile
+  regime genuinely invalidates it; S2 is a momentum-breakout setup judged on
+  the symbol's own 5-min structure.  Decided in an earlier session and
+  re-confirmed by the user Jul 27.  If you notice this and think it's a bug:
+  it isn't.  Ask before changing it.
 - **Energy floor** (per-strategy toggles; currently S2-only): symbol's own true range
   must be ≥ 50% of its own ATR(14) — flat symbols can't continue pullbacks.
 - **Volatility ceiling** (both ON): block when symbol range > 2.5× own ATR — post-event
@@ -112,6 +122,76 @@ guardian runs migrations first + records fills, logs rotate daily (14 days kept,
   orders that filled Monday 9:30 open. Fixed: `is_market_open()` guard in S2 scan +
   startup sweep cancels ALL resting buy orders. (User rotated API key + removed
   Antigravity IDE during the investigation — both fine but neither was the cause.)
+- **Jul 24 AMZN PS #176 −$76**: first PS trade, two lessons. (1) 6-min stop hold +
+  6% scalp stop = the only live protection is the broker disaster stop 8% BELOW —
+  planned $28 risk realized −$76 (−16.6%); PS hold cut to 2 min. (2) PS state
+  signals (trend/thesis) were true but STALE — entered a PUT mid-bounce off the
+  session low (big green 5-min candle); the 1-min red-bar guard is too weak.
+  Bounce-entry tally hit 2 the SAME DAY (INTC PS #181 −$21, same pattern) →
+  bounce guards built: PS blocked if last completed 5-min bar is green OR price
+  > 0.5% above session low (PUT_SCALP_NO_GREEN_5M_ENABLED /
+  PUT_SCALP_MAX_BOUNCE_FROM_LOW_PCT, UI fields, app.js v26, suite 547).
+  Also Jul 24: S2 INTC PUT −$92 — user had flipped S2_PUTS_ENABLED thinking it
+  was a master switch; reverted, S1/S2 stay CALL-only.  Deeper timing insight
+  (named, not yet built): with entries starting ~11:00 ET, ALL short styles
+  enter after the morning downmove is spent, into lunch stabilization — CALLs
+  don't suffer this because uptrends resume afternoons.  If PS keeps losing
+  even with bounce guards, the answer is an earlier short window or no shorts,
+  not more entry filters.
+
+- **Jul 27 STALE-QUOTE EXITS −$58 (WMT #195, ORCL #197)**: two of four exits
+  fired on quotes the market never traded at. WMT stop $1.06 → triggered on
+  $1.00, filled **$1.14** (+14.0%, actually −7.3% not −14%). ORCL (S2)
+  quick-loss −19% → triggered on $3.65, filled **$4.18** (+14.5%, actually
+  −5.0%). Both during dense `Tradier timeout` storms. Cause: the manage loop
+  fell back to `last` — the most recent TRADE print, minutes stale on a thin
+  option — whenever a side of the quote was missing, then treated it as the
+  market. **Fix: a two-sided quote is now required for any exit decision**
+  (both S1 and S2 branches); a one-sided/missing quote logs a WARNING with
+  bid/ask/last and skips the tick. Delayed exits during a feed outage are
+  exactly what the broker disaster stop covers. Tests `test_25_degraded_quote.py`.
+- **Jul 27 ORCL #197 → #198**: S2 quick-lossed ORCL at 14:58 and **S1 opened
+  the same symbol 8 minutes later** — `_get_recent_bad_exit` listed only
+  STOP/VWAP_BREAK/MANUAL. S2's own cooldown already counted QUICK_LOSS.
+  Fix: QUICK_LOSS + STRUCT_EXIT added to S1's list.
+- **Jul 27 PLTR #194**: the UI levels editor sent the RAW stop to the broker,
+  skipping `_broker_stop_price()`'s 6% buffer that the entry path applies.
+  Editing levels silently promoted the disaster stop into a PRIMARY stop —
+  Tradier triggers on prints and fills at market, so it front-ran the bot's
+  mid-based marketable-limit exit. PLTR's broker stop was moved $3.32 → $3.53
+  by an edit and it then exited `CLOSED via broker-side STOP @ $3.50`.
+  **Fixed**: both the modify-in-place and cancel-and-replace paths now send
+  `_broker_stop_price(stop)`, and the log names it a "disaster stop" with the
+  bot stop + buffer, matching the entry path. Regression test is
+  mutation-checked (reverting the fix fails it).
+- **Jul 27 (harness)**: the multi-account refactor broke
+  `test_22_s3_isolation`'s `lambda: client` (now called with an account). The
+  TypeError was swallowed by the per-account handler, the manage loop never
+  ran, and the tripwire test **passed vacuously**. Fixed to `lambda *a, **k`.
+  Lesson: when a signature changes, check that monkeypatched test doubles
+  still get *called* — a swallowed exception turns a guard test into a no-op.
+
+- **Jul 22-27 TRADIER TIMEOUT STORM (~800 warnings/day)**: near-zero before
+  Jul 22, then 154 / 722 / 834 / 810 per day. Concentrated in the scan hour
+  (568 of today's 810 landed in 10:00-11:00 ET), spread across all symbols —
+  load-correlated, not symbol-specific. Missed entries are fail-safe (skip
+  the cycle, retry next tick) but the same feed distress produced the two
+  stale-quote exits above. **Diagnosis was blocked by the logging**: httpx
+  timeout exceptions stringify to an EMPTY string, so `"failed: %s" % exc`
+  printed nothing, and `except httpx.TimeoutException` discarded the class —
+  a saturated LOCAL pool and a slow Tradier looked identical. Fixed: five log
+  sites in `tradier.py` now go through `_exc_label()` and name the class.
+  **Read the next session's log before tuning anything**:
+    * `PoolTimeout`    → our own cap. `TradierClient._LIMITS.max_connections`
+      is 10, against 3 scanners x `Semaphore(3)` + the manage loop + QQQ.
+      Raise to ~30; it is an arbitrary local limit, not a Tradier one.
+    * `ReadTimeout`    → Tradier genuinely slow. Fewer symbols, or a longer
+      read timeout (was cut 20s -> 8s so a scan cannot overrun its 60s tick).
+  Leading hypothesis is PoolTimeout (the abrupt Jul 22 onset + the
+  concurrency math), but it is UNMEASURED — confirm from the log first.
+- **Jul 27 watch item**: `FISV` times out every cycle and `get_daily_bars`
+  fails on it. Verify the ticker is still valid (Fiserv is believed to have
+  moved FISV -> FI) — a dead symbol burns pool slots on every scan.
 
 ## 5. Current config posture (see `.env` for authority)
 
@@ -119,26 +199,203 @@ Live, half-size, both directions, evaluation mode:
 `RISK_PER_TRADE=75`, `S2_RISK_PER_TRADE=60` (user-set), max 1 S1 + 2 S2 concurrent,
 windows 11:00–12:30 ET, chop 0.5 / energy floor 0.5 (S2) / ceiling 2.5 (both),
 min premium $1.00, spread 12%, runner on (floor lock 3%), structure exit 10-min hold,
-strict S2 PUT gate on, all PUT switches ON. Broker stop ON (8% buffer), broker TP ON
+strict S2 PUT gate on, S1/S2 PUT switches OFF (Jul 23) but PUT Scalp mode ON (§6b).
+Broker stop ON (8% buffer), broker TP ON
 but auto-skipped while stop rests. `.env` is heavily commented with the rationale and
 date of every change — **read those comments before touching values.**
 
-## 6. THE STANDING AGREEMENT (most important section)
+## 6. THE STANDING AGREEMENT — REVIEW EXECUTED EARLY (Jul 23)
 
-The system has cost real money; the user's patience is spent. As of Jul 20:
+After CRM −$140 (Jul 23), the user pulled the review forward: *"Do whatever you
+wanted to do now. No point in waiting till 28th."* Final clean-engine numbers
+(Jul 15–23, 21 trades, excl. adopted_orphan):
 
-1. **No new features or gates until the July 28 review.** The machinery is sound;
-   every recent loss was at a designed level with honest books.
-2. **July 28 review** (~10 clean sessions since Jul 15): compute per-slice expectancy —
-   CALLs vs PUTs, per strategy, runner-vs-waived-TP scoreboard, entry-hour, R/R buckets,
-   chop-gate tally. Only trades with `entry_time >= 2026-07-15`, excluding
-  `strategy_name='adopted_orphan'`, are clean.
-3. **Decision rules pre-committed**: PUTs stay negative → flip the PUT kill switches.
-   NO slice positive → **stop live trading, move to paper** until a slice proves out.
-   The 11:00–12:30 window itself (chosen from contaminated June data, sits in the
-   midday mean-reversion band) is a legitimate suspect — test alternatives in paper only.
-4. Interim clean-engine scorecard (Jul 15–20): ~18 trades, ~40% win, ≈ −$250;
-   **CALLs+runners ≈ positive, PUTs ≈ −$300** — the one robust split so far.
+| Slice | n | W/L | Total | avg W / avg L |
+|---|---|---|---|---|
+| **CALLs (both)** | 10 | 5/5 | **+$155** | $63 / −$32 ← positive, 2:1 payoff |
+| **Runner exits** | 5 | 4/1 | **+$207** | best mechanism in the system |
+| **S1 PUTs** | 11 | 3/8 | **−$509** | $34 / −$76 ← the entire deficit |
+| S2 PUTs | 0 | — | — | strict gate blocked all (correctly) |
+
+**Root cause of PUT failure** (named Jul 22-23): pullback-style PUT entries suffer
+adverse selection — on true trend-down days no pullback forms (no entry, e.g. Jul 23
+morning: 464 "no pullback" + 277 "too far" blocks); on choppy down days pullbacks
+DO form and are killed by the midday bounce (7 lunch-reversal tallies). Direction
+wasn't the problem; the entry style is structurally mistimed for shorts.
+
+**DECISIONS EXECUTED Jul 23:**
+1. `S1_PUTS_ENABLED=0`, `S2_PUTS_ENABLED=0` — PUT side dead in .env (user must also
+   flip both toggles in Settings UI for immediate effect / restart applies .env).
+2. System continues **live, CALL-only** — the CALL slice earned it (+$155 at these sizes).
+3. **Hard edge stands**: if CALLs go negative over the next ~2 weeks, stop live
+   trading entirely → paper.
+4. Still NO new features. Post-review candidates in §9 need their own evidence.
+5. A short-side re-design (breakdown/momentum entries, not pullbacks) is a
+   **paper-only** experiment if the user ever wants shorts again.
+
+Note: user reverted/kept `RISK_PER_TRADE=150` (never halved) and made own tweaks
+(MAX_OPEN_TRADES=2, window 11:00–12:45, runner 0.03/0.05, ORPHAN_STOP_EXCLUDED_SYMBOLS).
+The working tree is the truth — always re-read `.env` before reasoning about config.
+
+**"LAST TRY" CONFIGURATION (Jul 23 evening, user-directed):** after the PUT
+verdict the user requested one final live configuration, CALL-only:
+1. **Fixed levels replace structural**: `STRUCTURAL_LEVELS_ENABLED=0`,
+   TP +21% / SL −17% both strategies (R/R 1.24 baked in).  The old
+   VWAP_BREAK-resurrection coupling was fixed — `STRUCT_DISABLE_VWAP_BREAK=1`
+   now keeps that noise exit dead regardless of structural on/off.
+2. **Runner guarantees +18%**: proximity 0.025 (arms ~+18% vs the 21% TP),
+   `RUNNER_FLOOR_LOCK_PCT=0.18` — any trade reaching +18% exits ≥ +18% or runs.
+3. **Marketable-limit urgent exits**: STOP/QUICK_LOSS/VWAP_BREAK/SIGNAL_FADE
+   sell via limit at bid × 0.97, 6 s timeout → market.  Caps the CRM/COIN-style
+   velocity slippage (~$36 each).
+4. **SIGNAL_FADE exit** (new, user-requested): every manage tick recomputes the
+   dashboard's Stock Trend + Thesis; when BOTH oppose the trade (S1:
+   completed-bar 15-min trend flipped AND underlying beyond exit band on wrong
+   side of session VWAP; S2: 5-min filter fully validates the opposite
+   direction) → immediate exit via marketable limit, `signal_conflict_time`
+   stamped (migration v13).  Both-signals + bar-close trend is the noise guard
+   distinguishing this from the removed VWAP_BREAK exit.
+If THIS configuration loses over ~2 weeks, the agreed endpoint is paper/stop —
+there is no "last last try".
+
+## 6b. PUT SCALP MODE "PS" (built Jul 23 evening, user-directed)
+
+User observed PUTs "go up 6-7% then reverse" and, with market sentiment negative,
+wanted shorts back — as scalps. This is the breakdown-style short entry the PUT
+post-mortem called for (NOT a pullback → no adverse selection), so it was built:
+
+- **Entry**: Stock Trend (completed-bar 15-min EMA bearish) AND Thesis (underlying
+  below session VWAP beyond `max(VWAP_EXIT_BAND_PCT,0.3%)`) — SIGNAL_FADE's two
+  signals required at entry — plus red last-1-min momentum bar, QQQ regime not
+  bullish, chop gate, vol ceiling, min premium, **own 8% spread gate** (12% would
+  eat the 8% TP). Scanner `scan_for_put_scalp` (S1 cadence, market-open guarded).
+- **Levels** (Jul 23 evening tune): fixed TP +11% / SL −6%; stop suppressed 2 min
+  (was 6 — see Jul 24 AMZN #176 in §4; quick-loss + broker disaster stop stay live). **Runner arms at +7% GAIN** (not
+  TP-proximity — passes proximity_pct=1.0 into should_activate_runner), trails 2%,
+  **floor entry+5%** — user observed entries run +5-7% then reverse; the floor
+  converts that exact pattern into a locked win instead of a round-trip loss.
+- **Slots/size**: `PUT_SCALP_MAX_OPEN=1` **additive** to MAX_OPEN_TRADES (a scalp
+  can't squeeze out a CALL); risk $75 (half); 30-min per-symbol cooldown after ANY
+  PS exit (the signal is a STATE, not an event — no cooldown = machine-gun).
+- **Isolation**: `strategy_name="put_scalp"`, red "PS" badge in UI; S1/S2 PUT
+  switches stay 0; analytics must NEVER mix PS with the CALL-only verdict.
+  Note: shared cooldown helpers are cross-strategy (a PS stop also cools S1 on
+  that symbol for COOLDOWN_MINUTES — accepted, conservative).
+- **Managed by the S1 manage branch** (falls through) with `_is_ps` overrides for
+  runner params + stop hold; SIGNAL_FADE works inverted for PUTs automatically.
+- Refactor: S1's fill-poll/cancel-race block extracted to `_await_entry_fill()`
+  (single implementation of the ghost-trade guard, shared S1+PS).
+- Config block in `.env` (PUT_SCALP_*), Settings UI group "PUT Scalp Mode (PS)",
+  app.js cache-buster **v25**, tests `tests/test_22_put_scalp.py` (10), suite 545.
+- PS is an experiment with its own verdict; it does NOT extend the §6 CALL edge.
+  If PS bleeds, kill `PUT_SCALP_ENABLED` alone.
+
+## 6c. MULTI-ACCOUNT SUPPORT (built Jul 25 2026, user-directed)
+
+The bot was hard-wired to the single Tradier account in `.env`.  It now trades
+**a list of accounts**, each with its own token + account number, its own
+strategy enrolment, and its own sizing/slots.  User's ask: *"add multiple
+accounts … I should also [have] a capability wherein I can pick and choose
+between strategies and account."*
+
+**Data model** — new `accounts` table (migration **v14**, `app/models.py::Account`):
+credentials (`account_number`, `api_token`, optional `data_api_token`,
+`use_sandbox`), state (`enabled`, `is_primary`, `sort_order`, `notes`),
+four strategy flags (`s1/s2/s3/put_scalp_enabled`) and ten nullable sizing
+overrides (`risk_per_trade`, `amount_per_trade`, `max_open_trades`,
+`max_daily_loss` and the S2/PS equivalents).  **NULL = inherit the global
+`.env` value.**  `trades.account_id` records which account holds each position.
+
+**Startup migration** is automatic and idempotent (`seed_default_account`,
+run from the lifespan): the `.env` account becomes account #1 "Primary",
+`is_primary=1`, and **every existing trade is backfilled to it** — including
+anything still OPEN at upgrade time, which otherwise would have been managed
+by nobody.  Nothing to do by hand; the old `.env` credentials keep working.
+
+**The core abstraction: the account rides on the client.**
+`app/services/accounts.py` defines the immutable `AccountView`; each account
+gets its own `TradierClient` carrying `client.ajoy_account`.  Scheduler code
+reads it through three helpers — `_acct(client)`, `_s(client, "risk_per_trade")`
+(override → global), `_aid(client)` (id to stamp on a new Trade).  This is why
+the refactor didn't have to thread an `acct` argument through ~40 functions.
+**Back-compat contract:** a client with no account (every mock in the test
+suite, and any pre-existing caller) resolves to `legacy_view()`, whose
+`id is None` → no account filtering and global settings, i.e. the exact old
+behaviour.  That is what kept all 578 pre-existing tests green, unmodified.
+
+**What is per-account vs global** (deliberate, user-chosen):
+- **Per account**: which strategies run, risk/trade, premium cap, max open
+  slots, daily-loss caps — plus every DB gate: open-slot counts, the
+  per-symbol "already open" check, all cooldowns, per-symbol daily counts.
+  Two accounts are separate books; an AMZN position in one must never block
+  the same signal in another.
+- **Global** (shared, still in Settings/.env): entry windows, chop/energy/vol
+  gates, structural levels, runner, exit tuning, PUT switches, and the
+  **master switches** `S2_ENABLED` / `PUT_SCALP_ENABLED` / `S3_ENABLED`.
+  Account flags are **ANDed** with those masters — killing `PUT_SCALP_ENABLED`
+  still kills PS everywhere (§6b's escape hatch is intact).
+
+**Loop semantics** — `_for_each_account(job, flag, fn)` runs each scanner once
+per enabled account and **isolates failures**: a revoked token in one account
+logs an error and the others still scan.  Two rules that matter:
+1. `manage_open_trades` iterates **ALL** accounts, not just enabled ones —
+   disabling stops NEW entries but must never abandon an open position.
+2. "Every account disabled" returns `[]` (a deliberate stop); an *empty or
+   missing table* falls back to the `.env` account (pre-migration installs).
+
+**Guardian sweeps every account** (including disabled ones — a paused account
+can still hold a position opened before it was paused).  Migrations now run
+*before* the account list is read, and one failing account can't abort the
+others.  This was the sharpest correctness risk in the change: a single-account
+guardian would have left accounts 2..N open overnight.
+
+**UI** — new **Accounts** tab: add/edit/pause accounts, a per-account strategy
+pill row (S1 / S2 / PS / S3), sizing overrides (blank = inherit), a **Test**
+button that verifies credentials against Tradier, and delete (blocked while
+the account holds an open trade — disable instead).  Tokens are **write-only**:
+the API returns `••••abcd` and a PATCH without a token leaves it unchanged.
+The Trades tab gains an account filter + a per-account strip (open count,
+P&L today, strategies) and an ACCOUNT column — **all hidden while only one
+account exists**, so a single-account setup looks unchanged.  app.js **v27**.
+
+**Also changed:** SQLite busy timeout 5 s → **30 s** (more concurrent readers
+now; a lock must delay an exit, never fail it); the two one-shot startup jobs
+merged into one sequential `_startup_tasks` (they were contending over the DB
+once each iterated every account); account list cached 3 s with explicit
+invalidation on edit.  `/api/trades/reconcile` now sweeps every account and
+tags each row — it returns 502 only when **every** account fails, so one
+unreachable account can't hide another's real positions.
+
+**Tests**: `tests/test_23_multi_account.py` (30) — the isolation primitives:
+slot/cooldown/P&L scoping, client routing, credential-change eviction, seeding
++ backfill, disabled-account semantics, sizing arithmetic, token masking.
+`tests/test_24_multi_account_e2e.py` (10) — the **money path**: drives the real
+`_attempt_entry` / `_close_trade` with two accounts on two mocked brokers and
+asserts on the ORDERS each broker received (one signal → two correctly-sized
+buys; A's slot cap doesn't block B; the sell goes back to the account that
+HOLDS the position).  Suite **618**.
+
+Two harness lessons worth keeping:
+- test_23/24 re-point `app.database` globals **inside their fixture only**.
+  Doing it at import time (as test_09/test_15 do) leaked into test_15 and broke
+  23 tests.  Don't add more import-time hijacks.
+- test_24's mock broker is **stateful** (cancelled orders report CANCELED).
+  A naive mock answering "filled" to every `get_order_status` makes
+  `_close_trade` believe the resting stop won the cancel race, so it books the
+  close *without placing a sell* — an exit test then passes while asserting
+  nothing.  This bit me while writing it.
+
+**UI verified in a real browser** (`uitest.py`, optional dev tool — needs
+Playwright, not collected by pytest): all five tabs render, the Accounts tab
+lists accounts with masked tokens, the edit panel and add-form templates
+render, and the account filter + ACCOUNT column appear with 2 accounts and stay
+hidden with 1.  Zero app-caused JS console errors.  Run `python uitest.py two`
+/ `one` after touching app.js or index.html.
+
+**Not changed on purpose:** the watchlist stays shared (one symbol list, the
+existing s1/s2/s3 flags); S3's own engine was not refactored (§1 rule);
+no strategy behaviour was touched — this is plumbing, and the §6 CALL-only
+verdict and the §6b PS experiment stand exactly as they were.
 
 ## 7. Working conventions with Anup
 
@@ -164,14 +421,20 @@ The system has cost real money; the user's patience is spent. As of Jul 20:
   cp -r app tests static .env <scratch>/ && cd <scratch>
   sed -i 's|/tmp/ajoy_|<scratch>/tmp_ajoy_|g' tests/*.py
   pytest tests/test_0*.py tests/test_1[0-4]*.py -q -p no:cacheprovider
-  pytest tests/test_1[5-9]*.py tests/test_2*.py -q -p no:cacheprovider
+  pytest tests/test_1[5-9]*.py tests/test_2*.py tests/test_s3.py -q -p no:cacheprovider
   ```
+  (299 + 309 = **608** as of Jul 25.)
   Also: pre-existing order-sensitivity — run test_09 before test_15 if together.
 - **Live DB**: read-only OK via `sqlite3.connect('file:ajoy.db?mode=ro', uri=True)`;
   writes fail while the bot runs (give the user a one-liner to run locally instead).
 - **Migrations**: append idempotent `ALTER TABLE` strings in `app/database.py::_migrate`
-  (currently at v12: …, runner_mode, tp_manual, original_stop_price). Test DBs get the
-  schema via `create_all`. Verify against a **copy** of live `ajoy.db` before shipping.
+  (currently at **v14**: …, tp_manual, original_stop_price, signal_conflict_time,
+  trades.account_id). Test DBs get the schema via `create_all`. Verify against a
+  **copy** of live `ajoy.db` before shipping.
+- **Accounts**: rows in the `accounts` table, managed from the Accounts tab —
+  NOT in `.env`. `.env` still holds the credentials that seed account #1 on
+  first startup. Per-account overrides are nullable columns; NULL = inherit
+  the global setting. See §6c.
 - **Settings UI**: fields live in `static/js/app.js::configGroups`; shared (S1+S2) groups
   get ids in the `['structural','chop','runner','energy']` list (green styling in
   index.html). **Bump the cache-buster** `app.js?v=N` in `index.html` on every app.js edit

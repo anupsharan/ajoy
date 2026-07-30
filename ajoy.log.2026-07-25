@@ -1,0 +1,26 @@
+2026-07-25 14:28:59 INFO     app.services.accounts  [accounts] Seeded primary account 'Primary' (6YB81397, LIVE) from .env and backfilled existing trades
+2026-07-25 14:28:59 INFO     app.services.scheduler  Tradier: market data → https://api.tradier.com/v1 | .env orders → https://api.tradier.com/v1 [LIVE] (account 6YB81397)
+2026-07-25 14:28:59 INFO     app.services.scheduler  Scheduler started — scan every 60s, manage every 30s, window 10:55–13:30 ET  | regime gate=ON (QQQ) | IV max=175% | cooldown=30m | sym loss cap=2/day
+2026-07-25 14:28:59 INFO     app.services.s3.engine  [S3] disabled (S3_ENABLED=0) — engine not started
+2026-07-25 14:28:59 INFO     app.services.scheduler  [accounts] Primary        ENABLED acct=6YB81397   LIVE → S1, S2 | risk S1 $150 / S2 $120 | slots S1 2 / S2 2 / PS 1
+2026-07-25 14:28:59 INFO     app.services.tradier  [accounts] Tradier client created for Primary#1 — orders → LIVE (account 6YB81397)
+2026-07-25 14:29:49 WARNING  app.routers.accounts  [accounts] Credentials changed for 'Primary' — cached Tradier client evicted
+2026-07-25 14:29:49 INFO     app.routers.accounts  [accounts] Account 'Primary' updated: account_number, amount_per_trade, enabled, max_daily_loss, max_open_trades, name, notes, put_scalp_enabled, put_scalp_max_open, put_scalp_risk_per_trade, risk_per_trade, s1_enabled, s2_amount_per_trade, s2_enabled, s2_max_daily_loss, s2_max_open_trades, s2_risk_per_trade, s3_enabled, sort_order, use_sandbox
+2026-07-25 14:29:51 WARNING  app.routers.accounts  [accounts] Credentials changed for 'Primary' — cached Tradier client evicted
+2026-07-25 14:29:51 INFO     app.routers.accounts  [accounts] Account 'Primary' updated: account_number, amount_per_trade, enabled, max_daily_loss, max_open_trades, name, notes, put_scalp_enabled, put_scalp_max_open, put_scalp_risk_per_trade, risk_per_trade, s1_enabled, s2_amount_per_trade, s2_enabled, s2_max_daily_loss, s2_max_open_trades, s2_risk_per_trade, s3_enabled, sort_order, use_sandbox
+2026-07-25 14:29:58 INFO     app.services.tradier  [accounts] Tradier client created for Primary#1 — orders → LIVE (account 6YB81397)
+2026-07-25 14:30:35 WARNING  app.routers.accounts  [accounts] Credentials changed for 'Primary' — cached Tradier client evicted
+2026-07-25 14:30:35 INFO     app.routers.accounts  [accounts] Account 'Primary' updated: account_number, amount_per_trade, enabled, max_daily_loss, max_open_trades, name, notes, put_scalp_enabled, put_scalp_max_open, put_scalp_risk_per_trade, risk_per_trade, s1_enabled, s2_amount_per_trade, s2_enabled, s2_max_daily_loss, s2_max_open_trades, s2_risk_per_trade, s3_enabled, sort_order, use_sandbox
+2026-07-25 14:30:36 INFO     app.services.tradier  [accounts] Tradier client created for Primary#1 — orders → LIVE (account 6YB81397)
+2026-07-25 14:30:38 WARNING  app.routers.accounts  [accounts] Credentials changed for 'Primary' — cached Tradier client evicted
+2026-07-25 14:30:38 INFO     app.routers.accounts  [accounts] Account 'Primary' updated: account_number, amount_per_trade, enabled, max_daily_loss, max_open_trades, name, notes, put_scalp_enabled, put_scalp_max_open, put_scalp_risk_per_trade, risk_per_trade, s1_enabled, s2_amount_per_trade, s2_enabled, s2_max_daily_loss, s2_max_open_trades, s2_risk_per_trade, s3_enabled, sort_order, use_sandbox
+2026-07-25 14:30:58 INFO     app.services.tradier  [accounts] Tradier client created for Primary#1 — orders → LIVE (account 6YB81397)
+INFO:     Started server process [47661]
+INFO:     Waiting for application startup.
+2026-07-25 16:06:55 INFO     app.services.scheduler  Tradier: market data → https://api.tradier.com/v1 | .env orders → https://api.tradier.com/v1 [LIVE] (account 6YB81397)
+2026-07-25 16:06:55 INFO     app.services.scheduler  Scheduler started — scan every 60s, manage every 30s, window 10:55–13:30 ET  | regime gate=ON (QQQ) | IV max=175% | cooldown=30m | sym loss cap=2/day
+2026-07-25 16:06:55 INFO     app.services.s3.engine  [S3] disabled (S3_ENABLED=0) — engine not started
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-07-25 16:06:55 INFO     app.services.scheduler  [accounts] Primary        ENABLED acct=6YB81397   LIVE → S1, S2 | risk S1 $150 / S2 $120 | slots S1 2 / S2 2 / PS 1
+2026-07-25 16:06:55 INFO     app.services.tradier  [accounts] Tradier client created for Primary#1 — orders → LIVE (account 6YB81397)

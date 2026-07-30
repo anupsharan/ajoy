@@ -94,6 +94,34 @@ class OrderResult:
 
 
 # ---------------------------------------------------------------------------
+# Error labelling
+# ---------------------------------------------------------------------------
+
+def _exc_label(exc: BaseException) -> str:
+    """
+    Render an exception as 'PoolTimeout' / 'ReadTimeout: detail' — never blank.
+
+    httpx's timeout exceptions stringify to an EMPTY string, so
+    `logger.warning("... failed: %s", exc)` printed "failed: " with nothing
+    after it.  That is how, for a week (Jul 22-27 2026, ~800 warnings/day),
+    a saturated LOCAL connection pool and a genuinely slow Tradier looked
+    identical in the log.  They have opposite fixes:
+
+      PoolTimeout    — our own pool is the bottleneck (TradierClient._LIMITS
+                       max_connections, currently 10, against 3 scanners x
+                       Semaphore(3) plus the manage loop).  Raise the cap.
+      ReadTimeout    — Tradier is actually slow.  Fewer symbols, or a longer
+                       read timeout (was cut 20s -> 8s so a scan cannot
+                       overrun the 60s interval).
+      ConnectTimeout — network/DNS reachability.
+
+    Always include the class name.
+    """
+    msg = str(exc)
+    return f"{type(exc).__name__}: {msg}" if msg else type(exc).__name__
+
+
+# ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
 
@@ -130,35 +158,70 @@ class TradierClient:
 
     _RETRY_DELAY = 1.5   # seconds before retrying a ReadTimeout
 
-    def __init__(self):
-        # Production: market data (always live)
+    def __init__(self, acct=None):
+        """
+        Build a client for ONE brokerage account.
+
+        `acct` is an `AccountView` (app.services.accounts).  Passing None
+        reproduces the original single-account behaviour by reading `.env`
+        directly — every pre-multi-account caller and the whole test-suite
+        rely on that, so it must stay exactly equivalent.
+        """
+        # Remember which account this client trades.  Downstream code reads
+        # it via accounts.account_of(client) to scope DB queries and sizing.
+        self.ajoy_account = acct
+
+        # Production: market data (always live).  Market data is account
+        # agnostic, so an account with no data token shares the global one.
         self._data_base = settings.tradier_base_url.rstrip("/")
+        data_token = (
+            (getattr(acct, "data_api_token", "") or settings.tradier_api_token)
+            if acct is not None else settings.tradier_api_token
+        )
         data_headers = {
-            "Authorization": f"Bearer {settings.tradier_api_token}",
+            "Authorization": f"Bearer {data_token}",
             "Accept": "application/json",
         }
 
-        # Order execution: sandbox or production based on USE_SANDBOX flag
-        if settings.use_sandbox:
-            self._order_base = settings.tradier_base_url_sandbox.rstrip("/")
+        if acct is not None:
+            # ── Multi-account mode: credentials come from the account row ──
+            use_sandbox = bool(acct.use_sandbox)
+            self._order_base = (
+                settings.tradier_base_url_sandbox.rstrip("/") if use_sandbox
+                else settings.tradier_base_url.rstrip("/")
+            )
             order_headers = {
-                "Authorization": f"Bearer {settings.tradier_api_token_sandbox}",
+                "Authorization": f"Bearer {acct.api_token}",
                 "Accept": "application/json",
             }
+            self._account_id = acct.account_number
+            self._use_sandbox = use_sandbox
+            self._account_label = acct.label
         else:
-            # ── LIVE MODE — real money ──────────────────────────────
-            self._order_base = settings.tradier_base_url.rstrip("/")
-            order_headers = {
-                "Authorization": f"Bearer {settings.tradier_api_token}",
-                "Accept": "application/json",
-            }
+            # ── Legacy single-account mode: credentials come from .env ─────
+            # Order execution: sandbox or production based on USE_SANDBOX flag
+            if settings.use_sandbox:
+                self._order_base = settings.tradier_base_url_sandbox.rstrip("/")
+                order_headers = {
+                    "Authorization": f"Bearer {settings.tradier_api_token_sandbox}",
+                    "Accept": "application/json",
+                }
+            else:
+                # ── LIVE MODE — real money ──────────────────────────────
+                self._order_base = settings.tradier_base_url.rstrip("/")
+                order_headers = {
+                    "Authorization": f"Bearer {settings.tradier_api_token}",
+                    "Accept": "application/json",
+                }
 
-        # Account ID: sandbox has a different account number than production
-        self._account_id = (
-            settings.tradier_account_id_sandbox
-            if settings.use_sandbox
-            else settings.tradier_account_id
-        )
+            # Account ID: sandbox has a different account number than production
+            self._account_id = (
+                settings.tradier_account_id_sandbox
+                if settings.use_sandbox
+                else settings.tradier_account_id
+            )
+            self._use_sandbox = bool(settings.use_sandbox)
+            self._account_label = "Primary (.env)"
 
         # Shared persistent HTTP clients — one per API endpoint.
         # Using a single long-lived client per destination allows httpx to
@@ -272,7 +335,7 @@ class TradierClient:
                 volume=int(q.get("volume") or 0),
             )
         except Exception as exc:
-            logger.warning("get_option_quote(%s) failed: %s", option_symbol, exc)
+            logger.warning("get_option_quote(%s) failed: %s", option_symbol, _exc_label(exc))
             return None
 
     async def get_option_expirations(self, symbol: str) -> list[str]:
@@ -380,11 +443,15 @@ class TradierClient:
                     )
                 )
             return bars
-        except httpx.TimeoutException:
-            # ReadTimeout / ConnectTimeout from a slow Tradier response.
-            # This is expected during heavy market hours — log a clean one-liner
-            # at WARNING (no traceback) and let the next scan cycle retry.
-            logger.warning("get_intraday_bars(%s): Tradier timeout — skipping this cycle", symbol)
+        except httpx.TimeoutException as exc:
+            # Pool/Read/Connect timeout.  The CLASS matters — see _exc_label:
+            # PoolTimeout is our own bottleneck, ReadTimeout is Tradier's.
+            # Expected during heavy market hours — clean one-liner at WARNING
+            # (no traceback); the next scan cycle retries.
+            logger.warning(
+                "get_intraday_bars(%s): %s — skipping this cycle",
+                symbol, _exc_label(exc),
+            )
             return []
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 400:
@@ -444,7 +511,7 @@ class TradierClient:
                 )
             return bars
         except Exception as exc:
-            logger.warning("get_daily_bars(%s) failed: %s", symbol, exc)
+            logger.warning("get_daily_bars(%s) failed: %s", symbol, _exc_label(exc))
             return []
 
     # Symbols that returned 400 from /markets/timesales — invalid or delisted.
@@ -578,7 +645,7 @@ class TradierClient:
         try:
             data = await self._order_get(f"/accounts/{self._account_id}/orders")
         except Exception as exc:
-            logger.warning("get_open_orders failed: %s", exc)
+            logger.warning("get_open_orders failed: %s", _exc_label(exc))
             return []
         raw = data.get("orders", {})
         if not raw or raw == "null":
@@ -603,7 +670,7 @@ class TradierClient:
         try:
             data = await self._order_get(f"/accounts/{self._account_id}/orders")
         except Exception as exc:
-            logger.warning("get_last_sell_fill(%s) failed: %s", option_symbol, exc)
+            logger.warning("get_last_sell_fill(%s) failed: %s", option_symbol, _exc_label(exc))
             return None
         raw = data.get("orders", {})
         if not raw or raw == "null":
@@ -646,10 +713,16 @@ class TradierClient:
 
 
 # ---------------------------------------------------------------------------
-# Module-level singleton
+# Client registry — one long-lived client per brokerage account
+#
+# Was a single module-level singleton.  Now keyed by the account's credentials
+# so that (a) each account keeps its own HTTP keep-alive pool, and (b) editing
+# a token in the Accounts UI produces a brand-new authenticated client instead
+# of silently reusing the stale one.
 # ---------------------------------------------------------------------------
 
-_client: Optional[TradierClient] = None
+_client: Optional[TradierClient] = None          # legacy / .env client
+_clients: dict[tuple, TradierClient] = {}        # account client_key -> client
 
 
 def extract_last_sell_fill(orders: list[dict], option_symbol: str) -> Optional[float]:
@@ -683,16 +756,65 @@ def extract_last_sell_fill(orders: list[dict], option_symbol: str) -> Optional[f
     return round(best[1], 2) if best else None
 
 
-def get_tradier_client() -> TradierClient:
+def get_tradier_client(acct=None) -> TradierClient:
+    """
+    Return the shared client for `acct` (an AccountView), creating it on first
+    use.  `acct=None` — or an account view with no id, i.e. the `.env` fallback
+    — returns the original single-account client, so every existing caller and
+    test behaves exactly as before.
+    """
     global _client
-    if _client is None:
-        _client = TradierClient()
-    return _client
+    if acct is None or getattr(acct, "id", None) is None:
+        if _client is None:
+            _client = TradierClient()
+        return _client
+
+    key = acct.client_key
+    client = _clients.get(key)
+    if client is None:
+        client = TradierClient(acct)
+        _clients[key] = client
+        logger.info(
+            "[accounts] Tradier client created for %s — orders → %s (account %s)",
+            acct.label,
+            "SANDBOX" if acct.use_sandbox else "LIVE",
+            acct.account_number or "?",
+        )
+    else:
+        # Same credentials, but strategy toggles / sizing may have changed —
+        # refresh the attached view so the client always reports current state.
+        client.ajoy_account = acct
+    return client
+
+
+async def evict_account_client(account_id: int) -> None:
+    """
+    Drop (and close) any cached client for an account.
+
+    Called after an account's credentials are edited or the account is deleted
+    so the next tick builds a client with the new token instead of continuing
+    to authenticate as the old one.
+    """
+    stale = [k for k in _clients if k[0] == account_id]
+    for key in stale:
+        client = _clients.pop(key, None)
+        if client is not None:
+            try:
+                await client.close()
+            except Exception as exc:
+                logger.debug("evict_account_client(%s): %s", account_id, exc)
 
 
 async def close_tradier_client() -> None:
-    """Close the shared HTTP connections on app shutdown."""
+    """Close every shared HTTP connection on app shutdown."""
     global _client
     if _client is not None:
         await _client.close()
         _client = None
+    for key in list(_clients):
+        client = _clients.pop(key, None)
+        if client is not None:
+            try:
+                await client.close()
+            except Exception as exc:
+                logger.debug("close_tradier_client(%s): %s", key, exc)

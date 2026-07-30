@@ -8,6 +8,7 @@ function ajoy() {
       { id: 'symbols',    label: 'Symbols' },
       { id: 'indicators', label: 'Indicators' },
       { id: 'trades',     label: 'Trades' },
+      { id: 'accounts',   label: 'Accounts' },
       { id: 'settings',   label: 'Settings' },
     ],
     // ── Trade sub-tabs ───────────────────────────────────────────
@@ -48,6 +49,45 @@ function ajoy() {
     evalMeta: { bars_1m: 0, bars_15m: 0 },
     evalError: '',
     evalGateOpen: true,      // collapse toggle for gate stack panel
+
+    // ── Accounts (multi-account, Jul 25 2026) ────────────────────
+    accounts: [],              // full rows for the Accounts tab
+    accountSummary: [],        // open-trade count + P&L per account
+    accountFilter: 'all',      // dashboard filter: 'all' or an account id
+    accountsLoading: false,
+    accountSaving: {},         // { id → 'idle'|'saving'|'saved'|'error' }
+    accountVerify: {},         // { id → {ok, msg} } result of a credential test
+    editingAccountId: null,
+    showAddAccount: false,
+    newAccount: {
+      name: '', account_number: '', api_token: '', data_api_token: '',
+      use_sandbox: true, enabled: true, notes: '',
+      s1_enabled: true, s2_enabled: true, s3_enabled: false, put_scalp_enabled: true,
+      // blank string = inherit the global setting from Settings/.env
+      max_open_trades: '', risk_per_trade: '', amount_per_trade: '', max_daily_loss: '',
+      s2_max_open_trades: '', s2_risk_per_trade: '', s2_amount_per_trade: '',
+      s2_max_daily_loss: '', put_scalp_max_open: '', put_scalp_risk_per_trade: '',
+    },
+    // Per-account strategy toggles rendered as a matrix on the Accounts tab.
+    accountStrategyFlags: [
+      { key: 's1_enabled',        label: 'S1',  title: 'VWAP pullback (CALL/PUT options)' },
+      { key: 's2_enabled',        label: 'S2',  title: 'EMA cross (options)' },
+      { key: 'put_scalp_enabled', label: 'PS',  title: 'PUT Scalp mode' },
+      { key: 's3_enabled',        label: 'S3',  title: 'Stocks via Moomoo' },
+    ],
+    // Per-account numeric overrides. Blank = inherit the global value.
+    accountOverrideFields: [
+      { key: 'risk_per_trade',           label: 'S1 risk/trade $' },
+      { key: 'amount_per_trade',         label: 'S1 premium cap $' },
+      { key: 'max_open_trades',          label: 'S1 max open' },
+      { key: 'max_daily_loss',           label: 'Daily loss cap $' },
+      { key: 's2_risk_per_trade',        label: 'S2 risk/trade $' },
+      { key: 's2_amount_per_trade',      label: 'S2 premium cap $' },
+      { key: 's2_max_open_trades',       label: 'S2 max open' },
+      { key: 's2_max_daily_loss',        label: 'S2 daily loss $' },
+      { key: 'put_scalp_risk_per_trade', label: 'PS risk/trade $' },
+      { key: 'put_scalp_max_open',       label: 'PS max open' },
+    ],
 
     // ── Trades ───────────────────────────────────────────────────
     liveTrades: [],
@@ -167,7 +207,10 @@ function ajoy() {
           { key: 'trend_reversal_min_hold_minutes', label: 'Reversal Min Hold (min)', hint: 'Suppress TREND_REVERSAL for N min after entry (only when profitable)', type: 'number', step: 1 },
           { key: 'trend_reversal_confirm_bars',     label: 'Reversal Confirm Bars',   hint: '1 = single bar triggers exit, 2 = need 2 consecutive bars',             type: 'number', step: 1 },
           { key: 'trend_reversal_cooldown_minutes', label: 'Reversal Cooldown (min)', hint: 'Re-entry cooldown after a TREND_REVERSAL exit',                         type: 'number', step: 1 },
-          { key: 'exit_limit_orders_enabled',   label: 'Limit-Order Exits',        hint: 'Patient exits (TP, trails, signal exits, cutoff) sell via limit at the mid — saves the half-spread. Urgent exits (STOP, QUICK_LOSS, VWAP_BREAK) always market-sell', type: 'bool' },
+          { key: 'exit_limit_orders_enabled',   label: 'Limit-Order Exits',        hint: 'Patient exits (TP, trails, signal exits, cutoff) sell via limit at the mid — saves the half-spread', type: 'bool' },
+          { key: 'urgent_exit_limit_enabled',   label: 'Marketable Urgent Exits',  hint: 'Urgent exits (STOP, QUICK_LOSS, SIGNAL_FADE) sell via limit at bid−3% instead of raw market — fills instantly in normal tape, caps velocity slippage (CRM/COIN paid ~$36 extra each on raw market)', type: 'bool' },
+          { key: 'urgent_exit_limit_pct',       label: 'Urgent Limit Buffer',      hint: 'Marketable limit = bid × (1 − this). 0.03 = 3% below bid', type: 'number', step: 0.01 },
+          { key: 'signal_conflict_exit_enabled', label: 'Signal-Conflict Exit',    hint: 'Exit (SIGNAL_FADE) the moment Stock Trend AND Thesis both flip against the trade — bar-close trend + session-VWAP thesis, both required as the noise guard. Uses the marketable urgent exit', type: 'bool' },
           { key: 'exit_limit_timeout_seconds',  label: 'Exit Limit Timeout (s)',   hint: 'Cancel the exit limit and fall back to a market sell after this many seconds (partial fills booked exactly)', type: 'number', step: 1 },
         ],
       },
@@ -216,6 +259,26 @@ function ajoy() {
           { key: 'chop_min_range_ratio',   label: 'Min Range / ATR Ratio',   hint: 'QQQ true range (gap included) must reach this fraction of ATR(14) (0.5 = 50%). Lower to 0.4 if too few trades', type: 'number', step: 0.05 },
           { key: 'chop_atr_period',        label: 'ATR Period (days)',       hint: 'Daily bars used for the ATR baseline (default 14)', type: 'number', step: 1 },
           { key: 'chop_filter_start_time', label: 'Filter Start (ET)',       hint: 'Filter passes before this time — session range is naturally small right after the open', type: 'time' },
+        ],
+      },
+      // ── PUT Scalp mode (PS) — Jul 23 2026 experiment ─────────────
+      {
+        id: 'put_scalp',
+        label: 'PUT Scalp Mode (PS)',
+        fields: [
+          { key: 'put_scalp_enabled',            label: 'PUT Scalp Enabled',   hint: 'Momentum-short experiment, independent of the S1/S2 PUT switches. Enters when Stock Trend (15-min EMA, completed bars) AND Thesis (below session VWAP beyond band) BOTH say PUT, last 1-min bar is red, and QQQ is not above its VWAP. Trades badge as PS', type: 'bool' },
+          { key: 'put_scalp_tp_pct',             label: 'Take Profit (decimal)', hint: 'Fixed TP above entry (0.08 = +8%)', type: 'number', step: 0.01 },
+          { key: 'put_scalp_sl_pct',             label: 'Stop Loss (decimal)',  hint: 'Fixed SL below entry (0.07 = −7%)', type: 'number', step: 0.01 },
+          { key: 'put_scalp_stop_min_hold_minutes', label: 'Stop Min Hold (min)', hint: 'Hard stop suppressed for this many minutes after entry (quick-loss and the broker disaster stop stay active)', type: 'number', step: 1 },
+          { key: 'put_scalp_runner_arm_pct',     label: 'Runner Arm (gain)',    hint: 'Runner arms when the option is up this much over entry (0.05 = +5%), momentum bar still required', type: 'number', step: 0.01 },
+          { key: 'put_scalp_runner_trail_pct',   label: 'Runner Trail',         hint: 'PS trades trail this far below price once the runner is armed (0.02 = 2%)', type: 'number', step: 0.01 },
+          { key: 'put_scalp_runner_floor_lock_pct', label: 'Runner Floor Lock', hint: 'Armed stop never below entry × (1 + this). 0.02 = worst runner exit ≈ +2%', type: 'number', step: 0.01 },
+          { key: 'put_scalp_risk_per_trade',     label: 'Risk per Trade ($)',   hint: 'Fixed-dollar risk at the PS stop — half of S1 size while the mode proves itself', type: 'number', step: 5 },
+          { key: 'put_scalp_max_open',           label: 'Max Open PS Trades',   hint: 'PS slots are ADDITIVE to Max Open Trades so a scalp never squeezes out a CALL entry', type: 'number', step: 1 },
+          { key: 'put_scalp_max_spread_pct',     label: 'Max Spread (of mid)',  hint: 'Tighter than the S1/S2 12% gate — a 12% spread would eat the entire 8% target', type: 'number', step: 0.01 },
+          { key: 'put_scalp_cooldown_minutes',   label: 'Cooldown (min)',       hint: 'Per-symbol pause after ANY PS exit — the entry signal is a state, not an event, so without this it would instantly re-enter', type: 'number', step: 5 },
+          { key: 'put_scalp_no_green_5m_enabled', label: 'No-Green-5m Guard',   hint: 'Block PS when the last completed 5-min candle is green — shorting a bounce, not a breakdown (Jul 24: AMZN #176, INTC #181 both entered mid-bounce)', type: 'bool' },
+          { key: 'put_scalp_max_bounce_from_low_pct', label: 'Max Bounce off Low', hint: 'Price must be within this fraction of the session low (0.005 = 0.5%) — the breakdown must be FRESH. 0 = disabled', type: 'number', step: 0.005 },
         ],
       },
       // ── Strategy 2 settings (EMA Pullback) ───────────────────────
@@ -354,6 +417,7 @@ function ajoy() {
       setInterval(() => this.updateClock(), 1000);
 
       await Promise.all([
+        this.loadAccounts(),
         this.loadSymbols(),
         this.loadIndicators(),
         this.loadGroups(),
@@ -366,6 +430,8 @@ function ajoy() {
 
       // Auto-refresh live trades every 30 s
       setInterval(() => { if (this.activeTab === 'trades' && this.tradeSubTab === 'open') this.loadLive(); }, 30000);
+      // Account strip (open count + P&L per account) refreshes on the same cadence
+      setInterval(() => { if (this.activeTab === 'trades' || this.activeTab === 'accounts') this.loadAccountSummary(); }, 30000);
     },
 
     updateClock() {
@@ -526,6 +592,178 @@ function ajoy() {
       return 'background:#FFF7F7;';
     },
 
+    // ── Accounts (multi-account, Jul 25 2026) ────────────────────
+    //
+    // Tokens are write-only: the API returns api_token_masked and never the
+    // secret, and PATCHing without a token leaves the stored one alone.  So
+    // the edit form starts with an empty token field meaning "unchanged".
+    async loadAccounts() {
+      this.accountsLoading = true;
+      try {
+        this.accounts = await this.api('GET', '/api/accounts');
+        this.accounts.forEach(a => {
+          if (this.accountSaving[a.id] === undefined) this.accountSaving[a.id] = 'idle';
+          // Empty token input = "keep the stored credential"
+          a._new_token = '';
+          a._new_data_token = '';
+        });
+        await this.loadAccountSummary();
+      } finally {
+        this.accountsLoading = false;
+      }
+    },
+
+    async loadAccountSummary() {
+      try {
+        this.accountSummary = await this.api('GET', '/api/accounts/summary');
+      } catch (e) {
+        this.accountSummary = [];
+      }
+    },
+
+    // Accounts currently eligible to trade — used for the dashboard filter.
+    get accountOptions() {
+      return [{ id: 'all', name: 'All accounts' }].concat(
+        this.accounts.map(a => ({ id: a.id, name: a.name }))
+      );
+    },
+
+    // Only show the account column / filter once there is more than one
+    // account — a single-account user should see the dashboard unchanged.
+    get multiAccount() {
+      return this.accounts.length > 1;
+    },
+
+    accountName(id) {
+      const a = this.accounts.find(x => x.id === id);
+      return a ? a.name : (id == null ? 'Primary' : `#${id}`);
+    },
+
+    summaryFor(id) {
+      return this.accountSummary.find(s => s.id === id) || { open_trades: 0, pnl_today: 0 };
+    },
+
+    // Trades shown on the dashboard, honouring the account filter.
+    get filteredLiveTrades() {
+      if (this.accountFilter === 'all') return this.liveTrades;
+      const id = Number(this.accountFilter);
+      return this.liveTrades.filter(t => t.account_id === id);
+    },
+
+    get filteredClosedToday() {
+      if (this.accountFilter === 'all') return this.closedToday;
+      const id = Number(this.accountFilter);
+      return this.closedToday.filter(t => t.account_id === id);
+    },
+
+    async onAccountFilterChange() {
+      // Closed / history come from the server so the totals match the filter.
+      await Promise.all([this.loadClosed(), this.loadHistory()]);
+    },
+
+    async addAccount() {
+      const a = this.newAccount;
+      if (!a.name.trim())           { alert('Account name is required'); return; }
+      if (!a.account_number.trim()) { alert('Tradier account number is required'); return; }
+      if (!a.api_token.trim())      { alert('Tradier API token is required'); return; }
+      if (!a.use_sandbox && !confirm(
+        `"${a.name}" is set to LIVE — real money.\n\n` +
+        `Ajoy will place real orders in Tradier account ${a.account_number} ` +
+        `for every strategy you enabled on it.\n\nAdd this account?`
+      )) return;
+
+      const payload = { ...a };
+      // Blank override inputs mean "inherit the global setting" → send null.
+      for (const f of this.accountOverrideFields) {
+        payload[f.key] = (a[f.key] === '' || a[f.key] === null) ? null : Number(a[f.key]);
+      }
+      try {
+        await this.api('POST', '/api/accounts', payload);
+        this.showAddAccount = false;
+        this.newAccount = {
+          name: '', account_number: '', api_token: '', data_api_token: '',
+          use_sandbox: true, enabled: true, notes: '',
+          s1_enabled: true, s2_enabled: true, s3_enabled: false, put_scalp_enabled: true,
+          max_open_trades: '', risk_per_trade: '', amount_per_trade: '', max_daily_loss: '',
+          s2_max_open_trades: '', s2_risk_per_trade: '', s2_amount_per_trade: '',
+          s2_max_daily_loss: '', put_scalp_max_open: '', put_scalp_risk_per_trade: '',
+        };
+        await this.loadAccounts();
+      } catch (e) { /* api() already alerted */ }
+    },
+
+    async saveAccount(acct) {
+      this.accountSaving[acct.id] = 'saving';
+      const payload = {
+        name: acct.name,
+        account_number: acct.account_number,
+        use_sandbox: acct.use_sandbox,
+        enabled: acct.enabled,
+        notes: acct.notes || '',
+        sort_order: acct.sort_order || 0,
+      };
+      this.accountStrategyFlags.forEach(f => { payload[f.key] = !!acct[f.key]; });
+      for (const f of this.accountOverrideFields) {
+        const v = acct[f.key];
+        payload[f.key] = (v === '' || v === null || v === undefined) ? null : Number(v);
+      }
+      // Only send credentials the user actually retyped.
+      if (acct._new_token)      payload.api_token = acct._new_token;
+      if (acct._new_data_token) payload.data_api_token = acct._new_data_token;
+
+      try {
+        await this.api('PATCH', `/api/accounts/${acct.id}`, payload);
+        this.accountSaving[acct.id] = 'saved';
+        setTimeout(() => { this.accountSaving[acct.id] = 'idle'; }, 2000);
+        this.editingAccountId = null;
+        await this.loadAccounts();
+      } catch (e) {
+        this.accountSaving[acct.id] = 'error';
+      }
+    },
+
+    // Quick enable/disable straight from the list.  Disabling stops NEW
+    // entries only — open positions keep being managed to their exit.
+    async toggleAccountEnabled(acct) {
+      const next = !acct.enabled;
+      if (!next && this.summaryFor(acct.id).open_trades > 0 && !confirm(
+        `"${acct.name}" has ${this.summaryFor(acct.id).open_trades} open position(s).\n\n` +
+        `Disabling stops NEW entries. Open positions keep being managed and ` +
+        `will still exit normally.\n\nDisable this account?`
+      )) return;
+      acct.enabled = next;
+      await this.saveAccount(acct);
+    },
+
+    async toggleAccountStrategy(acct, key) {
+      acct[key] = !acct[key];
+      await this.saveAccount(acct);
+    },
+
+    async verifyAccount(acct) {
+      this.accountVerify[acct.id] = { ok: null, msg: 'Checking…' };
+      try {
+        const r = await this.api('POST', `/api/accounts/${acct.id}/verify`, {});
+        this.accountVerify[acct.id] = r.ok
+          ? { ok: true,  msg: `${r.mode} OK — value $${(r.account_value ?? 0).toFixed(2)}, ` +
+                              `option BP $${(r.option_buying_power ?? 0).toFixed(2)}` }
+          : { ok: false, msg: r.error || 'Credential check failed' };
+      } catch (e) {
+        this.accountVerify[acct.id] = { ok: false, msg: 'Request failed' };
+      }
+    },
+
+    async deleteAccount(acct) {
+      if (!confirm(
+        `Delete account "${acct.name}"?\n\n` +
+        `Its closed trades stay in history. This cannot be undone.`
+      )) return;
+      try {
+        await this.api('DELETE', `/api/accounts/${acct.id}`);
+        await this.loadAccounts();
+      } catch (e) { /* api() alerted — e.g. open trades still held */ }
+    },
+
     // ── Trades ───────────────────────────────────────────────────
     async loadLive() {
       // Snapshot current P&L values before refreshing so we can show trend direction
@@ -552,7 +790,7 @@ function ajoy() {
       }
     },
 
-    async adoptOrphan(symbol, qty, costPerUnit) {
+    async adoptOrphan(symbol, qty, costPerUnit, accountId) {
       const costFmt = costPerUnit != null ? `$${costPerUnit.toFixed(4)}` : 'unknown';
       if (!confirm(
         `Adopt ${qty} contract(s) of ${symbol} into Ajoy?\n\n` +
@@ -565,6 +803,7 @@ function ajoy() {
           option_symbol: symbol,
           quantity: qty,
           cost_per_unit: costPerUnit,
+          account_id: accountId ?? null,
         });
         // Refresh both open trades (now shows the adopted position) and orphan list
         await this.loadLive();
@@ -574,10 +813,13 @@ function ajoy() {
       }
     },
 
-    async closeOrphan(symbol, qty) {
-      if (!confirm(`Close ${qty} contract(s) of ${symbol} in Tradier?\n\nThis will place a market sell order. No Ajoy record will be created.`)) return;
+    async closeOrphan(symbol, qty, accountId) {
+      const where = accountId != null ? ` in account "${this.accountName(accountId)}"` : '';
+      if (!confirm(`Close ${qty} contract(s) of ${symbol}${where} in Tradier?\n\nThis will place a market sell order. No Ajoy record will be created.`)) return;
       try {
-        await this.api('POST', '/api/trades/orphan/close', { option_symbol: symbol, quantity: qty });
+        await this.api('POST', '/api/trades/orphan/close', {
+          option_symbol: symbol, quantity: qty, account_id: accountId ?? null,
+        });
         await this.loadOrphans();
       } catch (e) {
         // error already shown by api()
@@ -663,12 +905,18 @@ function ajoy() {
       await this.loadLive();
       await this.loadClosed();
     },
+    // `?account_id=` is appended when the dashboard filter is on a single
+    // account, so the summary totals match the rows shown.
+    acctQuery(prefix) {
+      return this.accountFilter === 'all' ? '' : `${prefix}account_id=${this.accountFilter}`;
+    },
     async loadClosed() {
-      this.closedToday = await this.api('GET', '/api/history/today');
-      this.todaySummary = await this.api('GET', '/api/history/summary/today');
+      const q = this.acctQuery('?');
+      this.closedToday  = await this.api('GET', `/api/history/today${q}`);
+      this.todaySummary = await this.api('GET', `/api/history/summary/today${q}`);
     },
     async loadHistory() {
-      this.history = await this.api('GET', '/api/history/last30');
+      this.history = await this.api('GET', `/api/history/last30${this.acctQuery('?')}`);
       // Populate unique filter options
       const uniqueDates    = [...new Set(this.history.map(t => this.fmtDay(t.exit_time)))].filter(Boolean);
       const uniqueSymbols  = [...new Set(this.history.map(t => t.symbol))].filter(Boolean).sort();
