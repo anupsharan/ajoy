@@ -136,6 +136,54 @@ Live, half-size, both directions, evaluation mode:
 windows 11:00–12:30 ET, chop 0.5 / energy floor 0.5 (S2) / ceiling 2.5 (both),
 min premium $1.00, spread 12%, runner on (floor lock 3%), structure exit 10-min hold,
 strict S2 PUT gate on, S1/S2 PUT switches OFF (Jul 23) but PUT Scalp mode ON (§6b).
+**Jul 30 2026 (evening) — ATR FLOOR ON THE STOP.** The structural revert below was
+only half the fix and the day proved it: ORCL #206 −$92, INTC #207 −$94, **INTC #208 −$62
+which ran entirely under structural levels with R/R 1.90 and still died**. Day −$248, 0/3.
+Stop distance vs each symbol's own 5-min ATR: **1.02× / 0.82× / 0.66× one candle**.
+`STRUCT_MIN_REWARD_RISK` compares reward to risk; `STRUCT_MIN_STOP_PCT` is a floor in
+*premium* terms — **nothing in the system compared risk to volatility.** S2 is structurally
+exposed: it enters at the top of the confirmation candle while the pullback low sits
+0.7–0.9% below, so every S2 stop is sub-ATR by construction. Built `STRUCT_MIN_STOP_ATR_MULT`
+(default **1.0**): stop distance must be ≥ N × ATR(5-min, 14) of the underlying, measured by
+folding the 1-min bars both strategies already hold (no extra Tradier call on the entry path).
+Three design points that carry the correctness: (1) R/R is **re-judged after** widening — a
+wider stop is a worse trade and must be re-scored, not inherit the flattering pre-widening
+ratio; (2) if the floored stop needs more than `STRUCT_MAX_STOP_PCT` the trade is **skipped,
+not clamped** — clamping would hand back the sub-ATR stop the floor exists to prevent while
+reporting a healthy risk_pct; (3) missing ATR **fails open** (0.0 = floor off) so data
+scarcity never blocks a trade. Sizing already divides by `struct.risk_pct`, so a wider stop
+costs contracts, not dollars. Log line now carries `stop 1.10 = 1.00×ATR(1.10) [WIDENED by
+ATR floor]` so the next post-mortem is a grep, not an evening of arithmetic. app.js **v29**,
+`tests/test_27_atr_stop_floor.py` (20, mutation-tested 3 ways), suite **663**.
+Expect fewer and smaller trades — replaying the day, ORCL #206 and INTC #207 are rejected
+outright and #208's stop moves $1.92 → ~$1.72.
+**Standing agreement status: the CALL-only engine is at −$74 over 31 trades since Jul 24
+(was +$174 before Jul 30). §6's hard edge — negative over ~2 weeks → paper — is live.**
+
+**Jul 30 2026 — STRUCTURAL LEVELS BACK ON** (ORCL #206 −$92 S1, INTC #207 −$94 S2).
+Not an exit bug: both fills landed on the trigger (ORCL $2.01→$1.98, INTC $2.03→$2.03),
+only 10 Tradier timeouts all day (vs 810 on Jul 27) and **zero PoolTimeout** — the Jul 27
+pool-exhaustion hypothesis is dead, it was ReadTimeout/ConnectTimeout. The fault was
+geometry: a fixed −14% option stop is 0.57% (ORCL) / 0.69% (INTC) of the STOCK once run
+back through delta = **0.74× and 0.59× ONE 5-min ATR candle**. Both entries were a few
+tenths below their SESSION HIGH, so reconstructed R/R was ≈0.5 — `STRUCT_MIN_REWARD_RISK`
+1.2 would have skipped both outright. Aggregate since Jul 24 (29 S1+S2, 16 wins, −$12):
+**under 10 min → 2/9, −$329; 10 min+ → 14/20, +$317**, and 6 of 11 stop-outs fired between
+5.0–8.5 min, i.e. the instant the 5-min suppression lifts. Set `STRUCTURAL_LEVELS_ENABLED=1`.
+**Coupled change — do not separate:** `RUNNER_TRAIL_PCT` 0.035→**0.08** and
+`RUNNER_FLOOR_LOCK_PCT` 0.14→**0.03**. Those two were tuned for a FIXED +18% TP; with a
+variable structural TP a 0.14 floor sits ABOVE the arming point for any TP under ~16.3%
+(`runner_floor` is a `max()`, so it lands above the mid and the next manage tick stops the
+trade out instantly — booking a small winner but killing the runner and mislabelling it a
+STOP), and once the floor stops masking it a 3.5% premium trail is only ~0.14% of the
+underlying. 0.08/0.03 is the pairing measured WITH structural on (Jul 23: runners 4/1, +$207).
+Also noted, not built: **S2 has no max-extension gate** (S1 has `VWAP_BAND_PCT`) — INTC
+entered 0.78% above its 5m-EMA9 on the confirmation candle's close. And S1's
+`VWAP_MIN_CLEARANCE_PCT` blocked ORCL 4× at 0.16–0.38% then fired at 0.689%, i.e. on a range
+day the clearance gate *guarantees* you buy the swing high. Both are candidates, not decisions.
+Two tests were silently reading window/levels config from `.env` and are now pinned
+(`test_10_trading_window::test_valid_midday_no_lunch`, `test_24`'s `_patch_all_layers`).
+
 **Jul 30 2026**: added `S1_ENABLED` (Settings → Risk & Sizing, first field) — S1 finally
 has a master toggle like S2/S3/PS. OFF = no NEW S1 entries; open S1 positions are still
 managed to their exit. ANDed with the per-account S1 flag. app.js **v28**,

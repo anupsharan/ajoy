@@ -168,10 +168,17 @@ _FAKE_SIGNAL = _EntrySignal(
 @contextmanager
 def _patch_all_layers():
     """Bypass every signal layer; force the market-order path (as test_13 does)."""
+    # structural_levels_enabled is pinned OFF here so sizing is deterministic.
+    # These tests assert on per-account ORDER QUANTITY, and with structural
+    # levels on the risk fraction comes from the computed structural stop
+    # rather than settings.stop_loss_pct — which made the expected quantity
+    # depend on whatever .env happened to say (it flipped to 1 on Jul 30).
+    # The subject here is account isolation, not the levels engine, so pin it.
     with patch("app.services.scheduler.check_entry_signal", return_value=_FAKE_SIGNAL), \
          patch("app.services.scheduler.check_bounce_confirmation", return_value=True), \
          patch("app.services.scheduler.check_momentum_candle", return_value=True), \
          patch("app.services.scheduler.check_vwap_slope", return_value=True), \
+         patch.object(settings, "structural_levels_enabled", False), \
          patch.object(settings, "use_limit_orders", False):
         yield
 

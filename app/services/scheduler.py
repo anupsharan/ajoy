@@ -52,6 +52,7 @@ from app.services.strategy import (
     compute_trade_levels,
     compute_structural_levels,
     get_structural_stop_target,
+    intraday_atr,
     calculate_atr,
     calculate_vwap,
     check_chop_regime,
@@ -1189,6 +1190,7 @@ async def _attempt_entry(
             buffer_pct=settings.struct_stop_buffer_pct,
             pullback_lookback=settings.struct_pullback_lookback,
         )
+        _atr = _stop_atr(bars_1m, ticker)
         struct = compute_structural_levels(
             direction=direction,
             option_entry=order_price,
@@ -1196,6 +1198,7 @@ async def _attempt_entry(
             underlying_entry=signal.current_price,
             stop_underlying=stop_u,
             target_underlying=target_u,
+            min_stop_distance=_atr * settings.struct_min_stop_atr_mult,
         )
         if not struct.ok:
             if struct.skip_reason == "fallback":
@@ -1213,10 +1216,10 @@ async def _attempt_entry(
         else:
             logger.info(
                 "[%s] Structural levels: stop_u=%.2f target_u=%.2f R/R=%.2f "
-                "→ option SL=%.2f (−%.0f%%) TP=%.2f",
+                "→ option SL=%.2f (−%.0f%%) TP=%.2f%s",
                 ticker, struct.stop_underlying, struct.target_underlying,
                 struct.reward_risk, struct.stop_price, struct.risk_pct * 100,
-                struct.tp_price,
+                struct.tp_price, _atr_note(struct, _atr, signal.current_price),
             )
 
     # ── Fixed-dollar risk sizing + premium budget cap ─────────────────────
@@ -2078,6 +2081,7 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
             buffer_pct=settings.struct_stop_buffer_pct,
             pullback_lookback=3,   # S2's pattern is exactly pullback + confirm bars
         )
+        _atr = _stop_atr(bars_1m, ticker)
         struct = compute_structural_levels(
             direction=direction,
             option_entry=order_price,
@@ -2085,6 +2089,7 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
             underlying_entry=current_price,
             stop_underlying=stop_u,
             target_underlying=target_u,
+            min_stop_distance=_atr * settings.struct_min_stop_atr_mult,
         )
         if not struct.ok:
             if struct.skip_reason == "fallback":
@@ -2102,10 +2107,10 @@ async def _attempt_entry_s2(db, client, ticker: str) -> None:
         else:
             logger.info(
                 "[S2][%s] Structural levels: stop_u=%.2f target_u=%.2f R/R=%.2f "
-                "→ option SL=%.2f (−%.0f%%) TP=%.2f",
+                "→ option SL=%.2f (−%.0f%%) TP=%.2f%s",
                 ticker, struct.stop_underlying, struct.target_underlying,
                 struct.reward_risk, struct.stop_price, struct.risk_pct * 100,
-                struct.tp_price,
+                struct.tp_price, _atr_note(struct, _atr, current_price),
             )
 
     risk_frac = struct.risk_pct if struct else settings.s2_stop_loss_pct
@@ -2314,6 +2319,48 @@ async def _place_broker_tp(db, client, trade: Trade) -> None:
             "bot-side TP remains active",
             trade.symbol, trade.id, exc,
         )
+
+
+def _atr_note(struct, atr: float, underlying_entry: float) -> str:
+    """
+    Suffix for the structural-levels log line reporting the stop in ATR terms.
+
+    This is the number the Jul 30 post-mortem had to be reconstructed by hand;
+    logging it means the next 'was the stop inside the noise?' question is one
+    grep away instead of an evening of arithmetic.
+    """
+    if atr <= 0 or not struct.ok:
+        return ""
+    dist = abs(underlying_entry - struct.stop_underlying)
+    return (f" | stop {dist:.2f} = {dist / atr:.2f}×ATR({atr:.2f})"
+            f"{' [WIDENED by ATR floor]' if struct.atr_widened else ''}")
+
+
+def _stop_atr(bars_1m: list, ticker: str) -> float:
+    """
+    Intraday ATR used as the floor for the structural stop distance.
+
+    Returns 0.0 when there is not enough history — the caller multiplies by the
+    configured multiple, so 0.0 disables the floor for that entry.  This FAILS
+    OPEN on purpose: a missing ATR must never block a trade (same posture as
+    the 5-min trend filter).  It is logged so a symbol that never has enough
+    bars is visible rather than silently unprotected.
+    """
+    if settings.struct_min_stop_atr_mult <= 0:
+        return 0.0
+    atr = intraday_atr(
+        bars_1m,
+        interval_minutes=settings.struct_stop_atr_minutes,
+        period=settings.struct_stop_atr_period,
+    )
+    if atr <= 0:
+        logger.info(
+            "[%s] Stop ATR unavailable (need %d×%d-min bars) — "
+            "ATR stop floor not applied to this entry",
+            ticker, settings.struct_stop_atr_period + 1,
+            settings.struct_stop_atr_minutes,
+        )
+    return atr
 
 
 def _broker_stop_price(stop_price: float) -> float:

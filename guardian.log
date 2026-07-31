@@ -190,3 +190,13 @@ WHERE trades.status = ?]
 2026-07-27 18:50:07 [GUARDIAN] INFO  ============================================================
 2026-07-27 18:50:07 [GUARDIAN] INFO  Guardian finished at 2026-07-28 01:50:07 UTC
 2026-07-27 18:50:07 [GUARDIAN] INFO  ============================================================
+2026-07-30 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-07-30 18:50:01 [GUARDIAN] INFO  Guardian starting at 2026-07-31 01:50:01 UTC
+2026-07-30 18:50:01 [GUARDIAN] INFO  Sweeping 1 account(s): Primary
+2026-07-30 18:50:01 [GUARDIAN] INFO  ------------------------------------------------------------
+2026-07-30 18:50:01 [GUARDIAN] INFO  Account: Primary  (LIVE, account 6YB81397)
+2026-07-30 18:50:01 [GUARDIAN] INFO  HTTP Request: GET https://api.tradier.com/v1/accounts/6YB81397/positions "HTTP/1.1 200 "
+2026-07-30 18:50:01 [GUARDIAN] INFO  [Primary] No open option positions found — nothing to close.
+2026-07-30 18:50:01 [GUARDIAN] INFO  ============================================================
+2026-07-30 18:50:01 [GUARDIAN] INFO  Guardian finished at 2026-07-31 01:50:01 UTC
+2026-07-30 18:50:01 [GUARDIAN] INFO  ============================================================

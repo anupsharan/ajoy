@@ -168,7 +168,13 @@ class TestIsPastLastEntryTime:
 class TestIsInTradingWindow:
 
     def test_valid_midday_no_lunch(self):
-        with patch.object(settings, "lunch_break_enabled", False):
+        # Pin the window like every sibling test does.  This was the one case
+        # reading it from ambient .env, so it broke the day the user set
+        # LAST_ENTRY_TIME=12:00 — 12:00 is then the (inclusive) boundary, not
+        # midday.  The subject is "inside the window passes", not the values.
+        with patch.object(settings, "lunch_break_enabled", False), \
+             patch.object(settings, "trading_start_time", "09:35"), \
+             patch.object(settings, "last_entry_time", "14:15"):
             assert is_in_trading_window(_et(*WED, 12, 0)) is True
 
     def test_before_start_blocked(self):

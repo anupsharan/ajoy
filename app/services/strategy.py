@@ -384,6 +384,80 @@ class StructuralLevels:
     risk_pct: float = 0.0       # option stop distance as fraction of entry
     reward_risk: float = 0.0    # underlying-terms R/R
     skip_reason: str = ""       # set when ok=False
+    atr_widened: bool = False   # True when the ATR floor pushed the stop out
+
+
+# ---------------------------------------------------------------------------
+# Intraday ATR — the volatility yardstick the stop is measured against
+#
+# WHY (Jul 30 2026, ORCL #206 / INTC #207 / INTC #208, −$248 in one session):
+# structural levels fixed the RATIO (reward vs risk) but nothing in the system
+# compared risk to VOLATILITY.  All three losers died on moves of 0.66–1.02x
+# a single 5-minute candle:
+#
+#     ORCL       stop 0.78% of stock | ATR 0.77%  -> 1.02x one candle
+#     INTC #207  stop 0.96%          | ATR 1.18%  -> 0.82x
+#     INTC #208  stop 0.79%          | ATR 1.19%  -> 0.66x   <- under structural
+#
+# A stop narrower than one average candle is not measuring "the thesis broke",
+# it is measuring "a candle went the wrong way".  S2 is structurally exposed to
+# this: it enters at the top of the confirmation candle while its invalidation
+# (the pullback low) sits only ~0.7-0.9% below, so EVERY S2 trade has this
+# shape.  STRUCT_MIN_STOP_PCT is a floor in PREMIUM terms and is blind to it.
+# ---------------------------------------------------------------------------
+
+def aggregate_bars(bars: list[Bar], minutes: int = 5) -> list[Bar]:
+    """
+    Fold 1-min bars into `minutes`-length bars, bucketed on wall-clock time so
+    the boundaries line up with the broker's own 5-min bars (09:30, 09:35, …).
+
+    Only whole buckets are returned — a partial trailing bucket is dropped, for
+    the same reason the entry layers exclude bars_1m[-1]: a forming bar's high
+    and low are not yet real, and an ATR built from them understates range.
+    """
+    if not bars or minutes <= 1:
+        return list(bars)
+
+    buckets: dict[tuple, list[Bar]] = {}
+    order: list[tuple] = []
+    for b in bars:
+        key = (b.time.date(), b.time.hour, (b.time.minute // minutes) * minutes)
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(b)
+
+    out: list[Bar] = []
+    for key in order:
+        group = buckets[key]
+        if len(group) < minutes:
+            continue                      # partial bucket — not a real bar yet
+        out.append(Bar(
+            time=group[0].time,
+            open=group[0].open,
+            high=max(x.high for x in group),
+            low=min(x.low for x in group),
+            close=group[-1].close,
+            volume=sum(x.volume or 0 for x in group),
+        ))
+    return out
+
+
+def intraday_atr(bars_1m: list[Bar], interval_minutes: int = 5,
+                 period: int = 14) -> float:
+    """
+    ATR of the underlying over `period` `interval_minutes`-bars, in dollars.
+
+    Built from 1-min bars (which both S1 and S2 already hold) rather than a
+    fresh 5-min fetch: identical methodology for both strategies, and no extra
+    Tradier call on the entry path — during a timeout storm that call would be
+    the one blocking the order.
+
+    Returns 0.0 when there is not enough history; callers must treat 0.0 as
+    "unknown" and NOT block the trade (same posture as the 5-min trend filter —
+    never fail closed on data scarcity).
+    """
+    return calculate_atr(aggregate_bars(bars_1m, interval_minutes), period)
 
 
 def get_structural_stop_target(
@@ -437,6 +511,7 @@ def compute_structural_levels(
     min_stop_pct: float | None = None,
     max_stop_pct: float | None = None,
     min_reward_risk: float | None = None,
+    min_stop_distance: float | None = None,
 ) -> StructuralLevels:
     """
     Translate underlying-based stop/target into option-price levels via delta.
@@ -488,6 +563,21 @@ def compute_structural_levels(
         # Already at/past the session extreme — no measurable room to target
         return StructuralLevels(ok=False, skip_reason="no room to target (at session extreme)")
 
+    # ── ATR floor on the stop DISTANCE (Jul 30 2026) ──────────────────────
+    # The chart invalidation can sit well inside one average candle, which is
+    # noise, not a broken thesis.  Push the stop out to the floor and move the
+    # underlying stop level with it, so everything downstream — R/R, the option
+    # stop, and therefore position size — is computed from the level we will
+    # actually honour.  R/R is deliberately evaluated AFTER widening: a wider
+    # stop is a worse trade, and it must be re-judged as one rather than
+    # inheriting the flattering ratio of a stop we were never going to use.
+    atr_widened = False
+    if min_stop_distance and min_stop_distance > stop_dist:
+        stop_dist = min_stop_distance
+        atr_widened = True
+        stop_underlying = (underlying_entry - stop_dist if direction == "CALL"
+                           else underlying_entry + stop_dist)
+
     reward_risk = tp_dist / stop_dist
     if reward_risk < min_reward_risk:
         return StructuralLevels(
@@ -501,6 +591,24 @@ def compute_structural_levels(
 
     # Translate to option prices via delta (per-share, same units as premium)
     risk_pct = (d * stop_dist) / option_entry
+
+    # If the ATR floor is what pushes the stop past max_stop_pct, SKIP rather
+    # than clamp.  Clamping here would hand back exactly the sub-ATR stop this
+    # floor exists to prevent, while reporting a healthy-looking risk_pct — the
+    # trade would look protected and would not be.  A contract this cheap
+    # relative to the stock's own range simply cannot carry a sane stop.
+    # (The non-ATR path keeps its original clamping behaviour untouched.)
+    if atr_widened and risk_pct > max_stop_pct:
+        return StructuralLevels(
+            ok=False,
+            reward_risk=round(reward_risk, 2),
+            skip_reason=(
+                f"ATR-floored stop needs {risk_pct * 100:.0f}% of premium "
+                f"(max {max_stop_pct * 100:.0f}%) — ${option_entry:.2f} contract "
+                f"too thin for a {stop_dist:.2f} stop on this symbol"
+            ),
+        )
+
     # Clamp: never tighter than min (spread noise), never wider than max
     risk_pct = max(min_stop_pct, min(risk_pct, max_stop_pct))
 
@@ -521,6 +629,7 @@ def compute_structural_levels(
         target_underlying=round(target_underlying, 4),
         risk_pct=round(risk_pct, 4),
         reward_risk=round(reward_risk, 2),
+        atr_widened=atr_widened,
     )
 
 

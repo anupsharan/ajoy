@@ -233,6 +233,15 @@ class Settings(BaseSettings):
     struct_min_stop_pct: float = 0.08        # option stop never tighter than 8% of premium (spread noise floor)
     struct_max_stop_pct: float = 0.30        # option stop never wider than 30% of premium (risk ceiling)
     struct_min_reward_risk: float = 1.2      # skip entry when underlying R/R below this
+    # Jul 30 2026 (ORCL #206 / INTC #207 / INTC #208, −$248): the stop must be
+    # at least this many intraday ATRs from entry.  struct_min_stop_pct is a
+    # floor in PREMIUM terms and cannot see the stock's own range; all three
+    # losers that day were stopped by moves of 0.66–1.02× a single 5-min candle.
+    # 0 disables the floor.  Widening re-tests R/R, and position size shrinks
+    # so the dollar risk at the stop is unchanged.
+    struct_min_stop_atr_mult: float = 1.0    # stop ≥ this × ATR(5-min) of the underlying
+    struct_stop_atr_minutes: int = 5         # bar size the ATR is measured on
+    struct_stop_atr_period: int = 14         # ATR lookback in those bars
     # When structural levels are on, the S1 VWAP_BREAK band exit is disabled:
     # the structural stop below VWAP/pullback-low replaces it at a level
     # derived from structure instead of a fixed noise-width band.

@@ -144,12 +144,12 @@ def check_5min_trend_filter(
 
     # ── Use cached result if the last completed bar hasn't changed ───────────
     if cached.get("last_bar_time") == last_bar_time:
-        # Deliberately silent (Jul 30 2026).  This is the CACHE-HIT path and it
-        # fires ~20 symbols x 2 directions x every 30s scan = it was 5,111 of
-        # 11,098 lines (46%) of one day's log while carrying no information —
-        # the recompute path below logs the actual EMA/VWAP values, which is
-        # the line worth reading.  Re-enable only to debug the cache itself.
-        return cached.get(direction, True)
+        result = cached.get(direction, True)
+        logger.debug(
+            "[S2-5m-filter][%s] Using cached trend — %s=%s",
+            ticker, direction, result,
+        )
+        return result
 
     # ── New candle — recompute ───────────────────────────────────────────────
     closes = [b.close for b in bars]
